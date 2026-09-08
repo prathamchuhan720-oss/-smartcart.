@@ -50,5 +50,13 @@ else:
     print(f'Updated superuser password: {username}')
 "
 
+echo "===> Seeding Amazon products..."
+if [ -f "seed_amazon.py" ]; then
+    python seed_amazon.py
+elif [ -f "backend/seed_amazon.py" ]; then
+    python backend/seed_amazon.py
+fi
+
 echo "===> SmartCart build completed successfully!"
+
 
