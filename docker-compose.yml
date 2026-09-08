@@ -1,0 +1,46 @@
+# SmartCart Docker Compose
+# Usage: docker-compose up -d db  (just PostgreSQL)
+# Usage: docker-compose up -d     (full stack)
+
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: smartcart_db
+    environment:
+      POSTGRES_DB: smartcart_db
+      POSTGRES_USER: smartcart_user
+      POSTGRES_PASSWORD: smartcart_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartcart_user -d smartcart_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smartcart_backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - media_data:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+
+volumes:
+  postgres_data:
+  media_data:
