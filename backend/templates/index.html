@@ -1,0 +1,3217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartCart – E-Commerce Store & Admin Control Center</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Axios CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <!-- React 18 & Babel CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              800: '#3730a3',
+              900: '#312e81',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen selection:bg-indigo-500 selection:text-white">
+  <div id="root"></div>
+
+  {% verbatim %}
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // Axios client configuration
+    const api = axios.create({
+      baseURL: '/api/',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    api.interceptors.request.use((config) => {
+      const token = localStorage.getItem('smartcart_access');
+      if (token) config.headers.Authorization = `Bearer ${token}`;
+      return config;
+    });
+
+    api.interceptors.response.use(
+      (res) => res,
+      (err) => {
+        if (err.response && err.response.status === 401) {
+          localStorage.removeItem('smartcart_access');
+          localStorage.removeItem('smartcart_refresh');
+          localStorage.removeItem('smartcart_user');
+        }
+        return Promise.reject(err);
+      }
+    );
+
+    // ==========================================
+    // ROOT APP COMPONENT (MODE DISPATCHER)
+    // ==========================================
+    function App() {
+      // Primary Mode: 'customer' or 'admin'
+      const [appMode, setAppMode] = useState(() => {
+        const saved = localStorage.getItem('smartcart_mode');
+        return saved === 'admin' ? 'admin' : 'customer';
+      });
+
+      const [currentUser, setCurrentUser] = useState(() => {
+        const saved = localStorage.getItem('smartcart_user');
+        return saved ? JSON.parse(saved) : null;
+      });
+
+      const [toast, setToast] = useState(null);
+      const [authModal, setAuthModal] = useState(null); // 'login', 'register', 'admin-login'
+
+      const showToast = (message, type = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3500);
+      };
+
+      const switchMode = (mode) => {
+        if (mode === 'admin') {
+          if (!currentUser) {
+            setAuthModal('admin-login');
+            return;
+          }
+          if (!currentUser.is_admin) {
+            showToast('Access denied: Admin credentials required.', 'error');
+            setAuthModal('admin-login');
+            return;
+          }
+        }
+        setAppMode(mode);
+        localStorage.setItem('smartcart_mode', mode);
+      };
+
+      const handleQuickLogin = async (email, password, targetMode) => {
+        try {
+          const res = await api.post('auth/login/', { email, password });
+          const { access, refresh, user } = res.data.data || res.data;
+          localStorage.setItem('smartcart_access', access);
+          localStorage.setItem('smartcart_refresh', refresh);
+          localStorage.setItem('smartcart_user', JSON.stringify(user));
+          setCurrentUser(user);
+          setAuthModal(null);
+          showToast(`Logged in as ${user.full_name} (${user.role.toUpperCase()})`);
+          if (targetMode) {
+            setAppMode(targetMode);
+            localStorage.setItem('smartcart_mode', targetMode);
+          }
+        } catch (err) {
+          showToast('Login failed: ' + (err.response?.data?.message || 'Invalid credentials'), 'error');
+        }
+      };
+
+      const handleLogout = () => {
+        localStorage.removeItem('smartcart_access');
+        localStorage.removeItem('smartcart_refresh');
+        localStorage.removeItem('smartcart_user');
+        setCurrentUser(null);
+        setAppMode('customer');
+        localStorage.setItem('smartcart_mode', 'customer');
+        showToast('Logged out successfully');
+      };
+
+      return (
+        <div className="flex flex-col min-h-screen">
+          {/* Top Quick Role Switcher Banner */}
+          <div className="bg-slate-900 text-xs text-slate-300 py-1.5 px-4 flex flex-wrap items-center justify-between border-b border-slate-800 z-50">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5 font-semibold text-slate-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Mode: <strong className="text-white uppercase tracking-wider">{appMode === 'admin' ? 'Admin Portal' : 'Customer Store'}</strong>
+              </span>
+              <span className="text-slate-600">|</span>
+              <button
+                onClick={() => switchMode(appMode === 'admin' ? 'customer' : 'admin')}
+                className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] transition-all flex items-center gap-1.5 ${
+                  appMode === 'admin'
+                    ? 'bg-indigo-600 text-white hover:bg-indigo-500'
+                    : 'bg-emerald-600 text-white hover:bg-emerald-500'
+                }`}>
+                <i className={`fa-solid ${appMode === 'admin' ? 'fa-store' : 'fa-shield-halved'}`}></i>
+                Switch to {appMode === 'admin' ? 'Customer Mode' : 'Admin Mode'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 text-[11px]">
+              <span className="hidden sm:inline text-slate-400">Quick Test Logins:</span>
+              <button
+                onClick={() => handleQuickLogin('customer@smartcart.com', 'Customer@12345', 'customer')}
+                className="hover:text-white text-indigo-300 underline font-medium">
+                Customer (John)
+              </button>
+              <button
+                onClick={() => handleQuickLogin('admin@smartcart.com', 'Admin@12345', 'admin')}
+                className="hover:text-white text-amber-300 underline font-medium">
+                Admin (Manager)
+              </button>
+              <span className="text-slate-600">|</span>
+              <a href="/api/docs/" target="_blank" className="hover:text-white text-slate-400 flex items-center gap-1">
+                <i className="fa-solid fa-code"></i> API Docs
+              </a>
+            </div>
+          </div>
+
+          {/* Render Mode Component */}
+          {appMode === 'admin' ? (
+            <AdminPortal
+              currentUser={currentUser}
+              showToast={showToast}
+              onSwitchToCustomer={() => switchMode('customer')}
+              onLogout={handleLogout}
+            />
+          ) : (
+            <CustomerStore
+              currentUser={currentUser}
+              showToast={showToast}
+              onOpenAuthModal={(t) => setAuthModal(t)}
+              onLogout={handleLogout}
+              onSwitchToAdmin={() => switchMode('admin')}
+            />
+          )}
+
+          {/* Authentication Modal */}
+          {authModal && (
+            <AuthModal
+              type={authModal}
+              onClose={() => setAuthModal(null)}
+              onSuccess={(user) => {
+                setCurrentUser(user);
+                setAuthModal(null);
+                showToast(`Welcome, ${user.full_name || user.username}!`);
+                if (authModal === 'admin-login') {
+                  if (user.is_admin) switchMode('admin');
+                  else showToast('Account is not an administrator.', 'error');
+                }
+              }}
+              onSwitch={(t) => setAuthModal(t)}
+              showToast={showToast}
+            />
+          )}
+
+          {/* Toast Alert */}
+          {toast && (
+            <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-sm transition-all duration-300 ${
+              toast.type === 'error'
+                ? 'bg-rose-50 text-rose-800 border-rose-200'
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            }`}>
+              <i className={`fa-solid ${toast.type === 'error' ? 'fa-triangle-exclamation text-rose-500' : 'fa-circle-check text-emerald-500'} text-base`}></i>
+              <span className="font-semibold">{toast.message}</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // SECTION 1: ACCURATE CUSTOMER APPLICATION
+    // =========================================================================
+    function CustomerStore({ currentUser, showToast, onOpenAuthModal, onLogout, onSwitchToAdmin }) {
+      const [customerTab, setCustomerTab] = useState('shop'); // 'shop', 'orders', 'wishlist', 'profile'
+      const [cart, setCart] = useState(null);
+      const [cartOpen, setCartOpen] = useState(false);
+      const [wishlistCount, setWishlistCount] = useState(0);
+
+      // Filter states
+      const [searchQuery, setSearchQuery] = useState('');
+      const [activeCategory, setActiveCategory] = useState('');
+      const [activeBrand, setActiveBrand] = useState('');
+      const [priceRange, setPriceRange] = useState(150000);
+      const [minRating, setMinRating] = useState(0);
+      const [inStockOnly, setInStockOnly] = useState(false);
+      const [ordering, setOrdering] = useState('-created_at');
+
+      const [selectedProduct, setSelectedProduct] = useState(null);
+
+      const fetchCart = async () => {
+        try {
+          const res = await api.get('cart/');
+          setCart(res.data.data || res.data);
+        } catch (err) {}
+      };
+
+      const fetchWishlist = async () => {
+        if (!currentUser) return;
+        try {
+          const res = await api.get('wishlist/');
+          const data = res.data.data || res.data;
+          setWishlistCount(data.total_items || 0);
+        } catch (err) {}
+      };
+
+      useEffect(() => {
+        fetchCart();
+        fetchWishlist();
+      }, [currentUser]);
+
+      return (
+        <div className="flex flex-col min-h-screen">
+          {/* Customer Header */}
+          <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center justify-between h-16 gap-4">
+                {/* Logo */}
+                <div className="flex items-center gap-3 cursor-pointer" onClick={() => setCustomerTab('shop')}>
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white text-xl shadow-md shadow-indigo-100">
+                    <i className="fa-solid fa-cart-shopping"></i>
+                  </div>
+                  <div>
+                    <h1 className="font-extrabold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600">
+                      SmartCart
+                    </h1>
+                    <span className="text-[10px] text-slate-400 font-bold block -mt-1 tracking-wider uppercase">Customer Store</span>
+                  </div>
+                </div>
+
+                {/* Live Search Input */}
+                <div className="flex-1 max-w-lg relative hidden md:block">
+                  <i className="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
+                  <input
+                    type="text"
+                    placeholder="Search phones, sportswear, electronics, audio..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600">
+                      <i className="fa-solid fa-xmark"></i>
+                    </button>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-3">
+                  {currentUser?.is_admin && (
+                    <button
+                      onClick={onSwitchToAdmin}
+                      className="px-3 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 flex items-center gap-1.5 shadow-sm transition-all">
+                      <i className="fa-solid fa-gauge-high text-amber-400"></i> Admin Panel
+                    </button>
+                  )}
+
+                  {/* Wishlist Button */}
+                  <button
+                    onClick={() => {
+                      if (!currentUser) onOpenAuthModal('login');
+                      else setCustomerTab('wishlist');
+                    }}
+                    className="relative p-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors"
+                    title="Wishlist">
+                    <i className="fa-regular fa-heart text-lg"></i>
+                    {wishlistCount > 0 && (
+                      <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                        {wishlistCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Cart Drawer Trigger */}
+                  <button
+                    onClick={() => setCartOpen(true)}
+                    className="relative p-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors"
+                    title="Cart">
+                    <i className="fa-solid fa-bag-shopping text-lg"></i>
+                    {cart?.total_items > 0 && (
+                      <span className="absolute top-1 right-1 w-4 h-4 bg-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                        {cart.total_items}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* User Profile / Auth State */}
+                  {currentUser ? (
+                    <div className="relative group">
+                      <button className="flex items-center gap-2 pl-2 pr-3 py-1.5 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-bold text-xs flex items-center justify-center uppercase">
+                          {currentUser.first_name ? currentUser.first_name[0] : currentUser.username[0]}
+                        </div>
+                        <span className="text-xs font-bold text-slate-700 max-w-[90px] truncate">
+                          {currentUser.first_name || currentUser.username}
+                        </span>
+                        <i className="fa-solid fa-chevron-down text-[10px] text-slate-400"></i>
+                      </button>
+
+                      <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-2xl shadow-xl py-1 hidden group-hover:block z-50">
+                        <div className="px-3.5 py-2.5 border-b border-slate-100">
+                          <p className="text-xs font-bold text-slate-800">{currentUser.full_name}</p>
+                          <p className="text-[11px] text-slate-400 truncate">{currentUser.email}</p>
+                        </div>
+                        <button
+                          onClick={() => setCustomerTab('orders')}
+                          className="w-full text-left px-3.5 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2">
+                          <i className="fa-solid fa-box text-slate-400"></i> My Orders
+                        </button>
+                        <button
+                          onClick={() => setCustomerTab('wishlist')}
+                          className="w-full text-left px-3.5 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2">
+                          <i className="fa-solid fa-heart text-slate-400"></i> My Wishlist
+                        </button>
+                        <button
+                          onClick={() => setCustomerTab('profile')}
+                          className="w-full text-left px-3.5 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2">
+                          <i className="fa-solid fa-user text-slate-400"></i> Profile & Addresses
+                        </button>
+                        <div className="border-t border-slate-100 my-1"></div>
+                        <button
+                          onClick={onLogout}
+                          className="w-full text-left px-3.5 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-medium">
+                          <i className="fa-solid fa-arrow-right-from-bracket"></i> Sign Out
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onOpenAuthModal('login')}
+                        className="text-xs font-bold text-slate-700 hover:text-indigo-600 px-3 py-2">
+                        Log In
+                      </button>
+                      <button
+                        onClick={() => onOpenAuthModal('register')}
+                        className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2 rounded-xl shadow-sm">
+                        Sign Up
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </header>
+
+          {/* Secondary Interactive Navigation Bar */}
+          <div className="bg-white/95 backdrop-blur-md border-b border-slate-200 py-2.5 px-4 sm:px-8 sticky top-16 z-30 shadow-xs">
+            <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs font-bold">
+              {/* Category & Shop Shortcuts */}
+              <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                <button
+                  onClick={() => { setCustomerTab('shop'); setActiveCategory(''); }}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                    customerTab === 'shop' && !activeCategory ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}>
+                  <i className="fa-solid fa-compass"></i> All Catalog
+                </button>
+                <button
+                  onClick={() => { setCustomerTab('shop'); setActiveCategory('smartphones'); }}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                    customerTab === 'shop' && activeCategory === 'smartphones' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}>
+                  <i className="fa-solid fa-mobile-screen"></i> Smartphones
+                </button>
+                <button
+                  onClick={() => { setCustomerTab('shop'); setActiveCategory('electronics'); }}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                    customerTab === 'shop' && activeCategory === 'electronics' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}>
+                  <i className="fa-solid fa-laptop"></i> Electronics
+                </button>
+                <button
+                  onClick={() => { setCustomerTab('shop'); setActiveCategory('mens-wear'); }}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                    customerTab === 'shop' && activeCategory === 'mens-wear' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}>
+                  <i className="fa-solid fa-shirt"></i> Men's Wear
+                </button>
+                <button
+                  onClick={() => { setCustomerTab('shop'); setActiveCategory('sports-fitness'); }}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                    customerTab === 'shop' && activeCategory === 'sports-fitness' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}>
+                  <i className="fa-solid fa-dumbbell"></i> Sports & Shoes
+                </button>
+              </div>
+
+              {/* Direct Tab Jumps */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => { if (!currentUser) onOpenAuthModal('login'); else setCustomerTab('orders'); }}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                    customerTab === 'orders' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}>
+                  <i className="fa-solid fa-box-archive text-amber-500"></i>
+                  <span>My Orders</span>
+                </button>
+                <button
+                  onClick={() => { if (!currentUser) onOpenAuthModal('login'); else setCustomerTab('wishlist'); }}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                    customerTab === 'wishlist' ? 'bg-rose-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}>
+                  <i className="fa-solid fa-heart text-rose-500"></i>
+                  <span>Wishlist ({wishlistCount})</span>
+                </button>
+                <button
+                  onClick={() => setCartOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 flex items-center gap-1.5 font-extrabold transition-all whitespace-nowrap">
+                  <i className="fa-solid fa-bag-shopping text-indigo-600"></i>
+                  <span>Cart ({cart?.total_items || 0})</span>
+                  <span className="text-slate-400 font-normal">|</span>
+                  <span>₹{Number(cart?.subtotal || 0).toLocaleString()}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Customer Body View */}
+          <main className="flex-1">
+            {customerTab === 'shop' && (
+              <CustomerShopView
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                activeCategory={activeCategory}
+                setActiveCategory={setActiveCategory}
+                activeBrand={activeBrand}
+                setActiveBrand={setActiveBrand}
+                priceRange={priceRange}
+                setPriceRange={setPriceRange}
+                minRating={minRating}
+                setMinRating={setMinRating}
+                inStockOnly={inStockOnly}
+                setInStockOnly={setInStockOnly}
+                ordering={ordering}
+                setOrdering={setOrdering}
+                onSelectProduct={(prod) => setSelectedProduct(prod)}
+                onAddToCart={async (product) => {
+                  try {
+                    const res = await api.get(`products/${product.slug}/`);
+                    const detailed = res.data.data || res.data;
+                    const variant = detailed.variants?.[0];
+                    if (variant) {
+                      await api.post('cart/items/', { variant_id: variant.id, quantity: 1 });
+                      fetchCart();
+                      showToast(`Added ${product.name} to cart!`);
+                    } else {
+                      setSelectedProduct(product);
+                    }
+                  } catch (e) {
+                    setSelectedProduct(product);
+                  }
+                }}
+                onToggleWishlist={async (productId) => {
+                  if (!currentUser) { onOpenAuthModal('login'); return; }
+                  try {
+                    await api.post('wishlist/', { product_id: productId });
+                    fetchWishlist();
+                    showToast('Saved to Wishlist!');
+                  } catch (e) {
+                    showToast('Could not add to wishlist', 'error');
+                  }
+                }}
+              />
+            )}
+
+            {customerTab === 'orders' && (
+              <OrdersView
+                currentUser={currentUser}
+                showToast={showToast}
+                onBackToShop={() => setCustomerTab('shop')}
+              />
+            )}
+
+            {customerTab === 'wishlist' && (
+              <WishlistView
+                currentUser={currentUser}
+                showToast={showToast}
+                fetchWishlist={fetchWishlist}
+                onSelectProduct={(prod) => setSelectedProduct(prod)}
+                onBackToShop={() => setCustomerTab('shop')}
+              />
+            )}
+
+            {customerTab === 'profile' && (
+              <ProfileView
+                currentUser={currentUser}
+                setCurrentUser={setCurrentUser}
+                showToast={showToast}
+                onBackToShop={() => setCustomerTab('shop')}
+              />
+            )}
+          </main>
+
+          {/* Cart Drawer */}
+          {cartOpen && (
+            <CartDrawer
+              cart={cart}
+              onClose={() => setCartOpen(false)}
+              onRefreshCart={fetchCart}
+              currentUser={currentUser}
+              setAuthModal={onOpenAuthModal}
+              showToast={showToast}
+              onCheckoutSuccess={() => {
+                setCartOpen(false);
+                fetchCart();
+                setCustomerTab('orders');
+              }}
+            />
+          )}
+
+          {/* Product Detail Modal */}
+          {selectedProduct && (
+            <ProductModal
+              productSlug={selectedProduct.slug || selectedProduct}
+              onClose={() => setSelectedProduct(null)}
+              currentUser={currentUser}
+              showToast={showToast}
+              onRefreshCart={fetchCart}
+              onSelectRecommendation={(rec) => setSelectedProduct(rec)}
+            />
+          )}
+
+          {/* Floating Bottom Quick Action Navigation Dock */}
+          <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 bg-slate-950/90 backdrop-blur-lg text-white px-5 py-2.5 rounded-full shadow-2xl border border-slate-800 flex items-center gap-4 sm:gap-6 text-xs font-bold transition-all">
+            <button
+              onClick={() => { setCustomerTab('shop'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+              className={`flex items-center gap-1.5 transition-colors ${customerTab === 'shop' ? 'text-indigo-400' : 'text-slate-400 hover:text-white'}`}>
+              <i className="fa-solid fa-house"></i>
+              <span className="hidden sm:inline">Store</span>
+            </button>
+            <button
+              onClick={() => { if (!currentUser) onOpenAuthModal('login'); else { setCustomerTab('orders'); window.scrollTo({ top: 0, behavior: 'smooth' }); } }}
+              className={`flex items-center gap-1.5 transition-colors ${customerTab === 'orders' ? 'text-indigo-400' : 'text-slate-400 hover:text-white'}`}>
+              <i className="fa-solid fa-box-open"></i>
+              <span className="hidden sm:inline">Orders</span>
+            </button>
+            <button
+              onClick={() => { if (!currentUser) onOpenAuthModal('login'); else { setCustomerTab('wishlist'); window.scrollTo({ top: 0, behavior: 'smooth' }); } }}
+              className={`relative flex items-center gap-1.5 transition-colors ${customerTab === 'wishlist' ? 'text-rose-400' : 'text-slate-400 hover:text-white'}`}>
+              <i className="fa-solid fa-heart text-rose-500"></i>
+              <span className="hidden sm:inline">Wishlist</span>
+              {wishlistCount > 0 && <span className="w-2 h-2 rounded-full bg-rose-500 absolute -top-1 -right-1"></span>}
+            </button>
+            <button
+              onClick={() => setCartOpen(true)}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-1.5 rounded-full flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition-all">
+              <i className="fa-solid fa-bag-shopping"></i>
+              <span>Cart ({cart?.total_items || 0})</span>
+            </button>
+            <button
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="text-slate-400 hover:text-white p-1 ml-1"
+              title="Scroll to Top">
+              <i className="fa-solid fa-arrow-up"></i>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // CUSTOMER SHOP CATALOG & FILTERING
+    // ==========================================
+    function CustomerShopView({
+      searchQuery,
+      setSearchQuery,
+      activeCategory,
+      setActiveCategory,
+      activeBrand,
+      setActiveBrand,
+      priceRange,
+      setPriceRange,
+      minRating,
+      setMinRating,
+      inStockOnly,
+      setInStockOnly,
+      ordering,
+      setOrdering,
+      onSelectProduct,
+      onToggleWishlist,
+      onAddToCart,
+    }) {
+      const [products, setProducts] = useState([]);
+      const [categories, setCategories] = useState([]);
+      const [brands, setBrands] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        api.get('categories/').then((res) => setCategories(res.data.results || res.data));
+        api.get('categories/brands/').then((res) => setBrands(res.data.results || res.data));
+      }, []);
+
+      useEffect(() => {
+        setLoading(true);
+        const params = {
+          search: searchQuery || undefined,
+          category: activeCategory || undefined,
+          brand: activeBrand || undefined,
+          max_price: priceRange || undefined,
+          min_rating: minRating > 0 ? minRating : undefined,
+          in_stock: inStockOnly ? 'true' : undefined,
+          ordering: ordering || undefined,
+        };
+
+        api.get('products/', { params })
+          .then((res) => setProducts(res.data.results || res.data))
+          .catch((err) => console.error(err))
+          .finally(() => setLoading(false));
+      }, [searchQuery, activeCategory, activeBrand, priceRange, minRating, inStockOnly, ordering]);
+
+      return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* Hero Promotional Banner */}
+          <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-8 sm:p-12 mb-6 shadow-2xl relative overflow-hidden border border-slate-800">
+            <div className="relative z-10 max-w-xl">
+              <span className="inline-block px-3 py-1 bg-indigo-500/20 border border-indigo-400/30 rounded-full text-xs font-bold text-indigo-300 mb-3">
+                🔥 Summer Technology & Sports Sale
+              </span>
+              <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3">
+                Next-Gen Tech, Premium Footwear & Apparel
+              </h2>
+              <p className="text-slate-300 text-xs sm:text-sm mb-6 leading-relaxed">
+                Enjoy flat 10% off with coupon <span className="bg-indigo-600 px-2 py-0.5 rounded font-mono font-bold text-white">WELCOME10</span>. Verified purchase reviews, fast shipping, and safe payments.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setActiveCategory('smartphones'); }}
+                  className="px-4 py-2.5 bg-white text-slate-900 font-extrabold rounded-xl text-xs hover:bg-slate-100 shadow transition-all">
+                  Shop Smartphones
+                </button>
+                <button
+                  onClick={() => { setActiveCategory('sports-fitness'); }}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs transition-all">
+                  Athletics & Gear
+                </button>
+              </div>
+            </div>
+            <div className="absolute right-0 top-0 bottom-0 w-1/2 opacity-10 flex items-center justify-center pointer-events-none">
+              <i className="fa-solid fa-basket-shopping text-[260px]"></i>
+            </div>
+          </div>
+
+          {/* Interactive Fast Jump Filter Carousel Buttons */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-2 scrollbar-none">
+            <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider whitespace-nowrap mr-1 flex items-center gap-1.5">
+              <i className="fa-solid fa-bolt text-amber-500"></i> Quick Filters:
+            </span>
+            {[
+              { label: 'All Items', icon: 'fa-globe', clearAll: true },
+              { label: 'Smartphones', icon: 'fa-mobile-screen', cat: 'smartphones' },
+              { label: 'Audio & Tech', icon: 'fa-headphones', cat: 'electronics' },
+              { label: 'Men\'s Wear', icon: 'fa-shirt', cat: 'mens-wear' },
+              { label: 'Sports Shoes', icon: 'fa-person-running', cat: 'sports-fitness' },
+              { label: '🔥 Deals & Discounts', icon: 'fa-tag', special: 'sale' },
+              { label: '⭐ Top Rated (4★+)', icon: 'fa-star', special: 'top' },
+              { label: '⚡ In Stock Only', icon: 'fa-boxes-stacked', special: 'instock' },
+            ].map((btn, idx) => (
+              <button
+                key={idx}
+                onClick={() => {
+                  if (btn.clearAll) {
+                    setActiveCategory('');
+                    setActiveBrand('');
+                    setMinRating(0);
+                    setInStockOnly(false);
+                  } else if (btn.cat !== undefined) {
+                    setActiveCategory(btn.cat);
+                  } else if (btn.special === 'sale') {
+                    setOrdering('-discount_percentage');
+                  } else if (btn.special === 'top') {
+                    setMinRating(minRating === 4 ? 0 : 4);
+                  } else if (btn.special === 'instock') {
+                    setInStockOnly(!inStockOnly);
+                  }
+                }}
+                className={`px-3.5 py-2 rounded-2xl text-xs font-bold whitespace-nowrap flex items-center gap-2 border transition-all ${
+                  (btn.cat && activeCategory === btn.cat) || (btn.special === 'instock' && inStockOnly) || (btn.special === 'top' && minRating >= 4) || (btn.clearAll && !activeCategory && !inStockOnly && minRating === 0)
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20'
+                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                }`}>
+                <i className={`fa-solid ${btn.icon} ${btn.clearAll ? 'text-amber-400' : ''}`}></i>
+                <span>{btn.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Active Filter Badges Bar */}
+          {(activeCategory || activeBrand || minRating > 0 || inStockOnly || searchQuery) && (
+            <div className="flex flex-wrap items-center gap-2 mb-6 p-3 bg-indigo-50/70 rounded-2xl border border-indigo-100 text-xs">
+              <span className="font-bold text-indigo-900 text-[11px] uppercase tracking-wider">Active Filters:</span>
+              {activeCategory && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white text-indigo-700 font-semibold rounded-xl border border-indigo-200">
+                  Category: {activeCategory}
+                  <button onClick={() => setActiveCategory('')} className="text-slate-400 hover:text-slate-700"><i className="fa-solid fa-xmark text-[10px]"></i></button>
+                </span>
+              )}
+              {activeBrand && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white text-indigo-700 font-semibold rounded-xl border border-indigo-200">
+                  Brand: {activeBrand}
+                  <button onClick={() => setActiveBrand('')} className="text-slate-400 hover:text-slate-700"><i className="fa-solid fa-xmark text-[10px]"></i></button>
+                </span>
+              )}
+              {minRating > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white text-amber-700 font-semibold rounded-xl border border-amber-200">
+                  Rating: {minRating}★+
+                  <button onClick={() => setMinRating(0)} className="text-slate-400 hover:text-slate-700"><i className="fa-solid fa-xmark text-[10px]"></i></button>
+                </span>
+              )}
+              {inStockOnly && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white text-emerald-700 font-semibold rounded-xl border border-emerald-200">
+                  In Stock Only
+                  <button onClick={() => setInStockOnly(false)} className="text-slate-400 hover:text-slate-700"><i className="fa-solid fa-xmark text-[10px]"></i></button>
+                </span>
+              )}
+              {searchQuery && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white text-slate-700 font-semibold rounded-xl border border-slate-200">
+                  "{searchQuery}"
+                  <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-700"><i className="fa-solid fa-xmark text-[10px]"></i></button>
+                </span>
+              )}
+              <button
+                onClick={() => { setActiveCategory(''); setActiveBrand(''); setSearchQuery(''); setMinRating(0); setInStockOnly(false); setPriceRange(150000); }}
+                className="text-xs text-rose-600 font-bold hover:underline ml-auto">
+                Clear All
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Sidebar Filters */}
+            <div className="w-full lg:w-64 flex-shrink-0 space-y-6">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                  <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                    <i className="fa-solid fa-filter text-indigo-600"></i> Refine Search
+                  </h3>
+                  {(activeCategory || activeBrand || minRating > 0 || inStockOnly || searchQuery) && (
+                    <button
+                      onClick={() => {
+                        setActiveCategory('');
+                        setActiveBrand('');
+                        setSearchQuery('');
+                        setMinRating(0);
+                        setInStockOnly(false);
+                        setPriceRange(150000);
+                      }}
+                      className="text-xs text-indigo-600 font-bold hover:underline">
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                {/* Categories */}
+                <div className="mb-6">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Category</label>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setActiveCategory('')}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold ${
+                        activeCategory === '' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
+                      }`}>
+                      All Categories
+                    </button>
+                    {categories.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setActiveCategory(c.slug)}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center justify-between ${
+                          activeCategory === c.slug ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-slate-600 hover:bg-slate-50'
+                        }`}>
+                        <span>{c.name}</span>
+                        {c.icon && <i className={`fa-solid ${c.icon} text-[10px] opacity-60`}></i>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Brands */}
+                <div className="mb-6">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Brand</label>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setActiveBrand('')}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold ${
+                        activeBrand === '' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
+                      }`}>
+                      All Brands
+                    </button>
+                    {brands.map((b) => (
+                      <button
+                        key={b.id}
+                        onClick={() => setActiveBrand(b.slug)}
+                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-medium ${
+                          activeBrand === b.slug ? 'bg-indigo-50 text-indigo-600 font-bold' : 'text-slate-600 hover:bg-slate-50'
+                        }`}>
+                        {b.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Max Price Slider */}
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-1.5 text-xs">
+                    <label className="font-bold text-slate-400 text-[11px] uppercase tracking-wider">Max Price</label>
+                    <span className="font-extrabold text-indigo-600">₹{priceRange.toLocaleString()}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1000"
+                    max="150000"
+                    step="2000"
+                    value={priceRange}
+                    onChange={(e) => setPriceRange(Number(e.target.value))}
+                    className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                    <span>₹1k</span>
+                    <span>₹150k</span>
+                  </div>
+                </div>
+
+                {/* Min Rating Filter */}
+                <div className="mb-6">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Min Rating</label>
+                  <div className="flex gap-1.5">
+                    {[4, 3, 2].map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setMinRating(minRating === r ? 0 : r)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
+                          minRating === r
+                            ? 'border-amber-400 bg-amber-50 text-amber-700'
+                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}>
+                        {r}★+
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* In Stock Checkbox */}
+                <div className="pt-2 border-t border-slate-100">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={inStockOnly}
+                      onChange={(e) => setInStockOnly(e.target.checked)}
+                      className="rounded text-indigo-600 w-4 h-4 border-slate-300 focus:ring-indigo-500"
+                    />
+                    <span>Available in Stock Only</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Catalog Grid */}
+            <div className="flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm mb-6">
+                <span className="text-xs font-semibold text-slate-500">
+                  Found <strong className="text-slate-900">{products.length}</strong> items
+                </span>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-slate-400 font-bold uppercase tracking-wider">Sort By:</label>
+                  <select
+                    value={ordering}
+                    onChange={(e) => setOrdering(e.target.value)}
+                    className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-semibold focus:ring-2 focus:ring-indigo-500">
+                    <option value="-created_at">Newest First</option>
+                    <option value="base_price">Price: Low to High</option>
+                    <option value="-base_price">Price: High to Low</option>
+                    <option value="-average_rating">Customer Rating</option>
+                    <option value="-total_reviews">Popularity</option>
+                  </select>
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="bg-white rounded-2xl p-4 border border-slate-200 animate-pulse">
+                      <div className="w-full h-48 bg-slate-100 rounded-xl mb-3"></div>
+                      <div className="h-4 bg-slate-100 rounded w-3/4 mb-2"></div>
+                      <div className="h-3 bg-slate-100 rounded w-1/2 mb-4"></div>
+                      <div className="h-6 bg-slate-100 rounded w-1/3"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : products.length === 0 ? (
+                <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 shadow-sm">
+                  <i className="fa-solid fa-box-open text-slate-300 text-5xl mb-4"></i>
+                  <h4 className="font-extrabold text-sm text-slate-800">No matching products found</h4>
+                  <p className="text-xs text-slate-400 mt-1 mb-4">Try clearing filters or changing price range.</p>
+                  <button
+                    onClick={() => {
+                      setActiveCategory('');
+                      setActiveBrand('');
+                      setSearchQuery('');
+                      setPriceRange(150000);
+                      setMinRating(0);
+                      setInStockOnly(false);
+                    }}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold shadow hover:bg-indigo-700">
+                    Reset Filters
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {products.map((p) => (
+                    <ProductCard
+                      key={p.id}
+                      product={p}
+                      onClick={() => onSelectProduct(p)}
+                      onToggleWishlist={onToggleWishlist}
+                      onAddToCart={onAddToCart}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // =========================================================================
+    // SECTION 2: ACCURATE ADMIN PORTAL & CONTROL CENTER
+    // =========================================================================
+    function AdminPortal({ currentUser, showToast, onSwitchToCustomer, onLogout }) {
+      const [currentAdminTab, setCurrentAdminTab] = useState('dashboard');
+      // Sub-views: 'dashboard', 'products', 'orders', 'inventory', 'categories', 'coupons', 'reviews', 'users', 'reports'
+
+      const [kpiStats, setKpiStats] = useState(null);
+      const [chartsData, setChartsData] = useState(null);
+      const [orders, setOrders] = useState([]);
+      const [products, setProducts] = useState([]);
+      const [categories, setCategories] = useState([]);
+      const [brands, setBrands] = useState([]);
+      const [inventoryList, setInventoryList] = useState([]);
+      const [coupons, setCoupons] = useState([]);
+      const [reviews, setReviews] = useState([]);
+      const [usersList, setUsersList] = useState([]);
+
+      // Modals
+      const [productModal, setProductModal] = useState(null); // 'create' or product object to edit
+      const [deleteModal, setDeleteModal] = useState(null); // product object to confirm deletion
+      const [categoryModal, setCategoryModal] = useState(false);
+      const [brandModal, setBrandModal] = useState(false);
+      const [couponModal, setCouponModal] = useState(false);
+      const [orderDetailModal, setOrderDetailModal] = useState(null);
+      const [restockModal, setRestockModal] = useState(null); // inventory object
+
+      const chartCanvasRef = useRef(null);
+      const chartInstanceRef = useRef(null);
+      const categoryChartRef = useRef(null);
+      const categoryChartInstanceRef = useRef(null);
+
+      const loadDashboardData = () => {
+        api.get('admin/dashboard/').then((res) => setKpiStats(res.data.kpis || res.data));
+        api.get('admin/analytics/').then((res) => setChartsData(res.data));
+        api.get('orders/').then((res) => setOrders(res.data.results || res.data));
+        api.get('products/').then((res) => setProducts(res.data.results || res.data));
+        api.get('categories/').then((res) => setCategories(res.data.results || res.data));
+        api.get('categories/brands/').then((res) => setBrands(res.data.results || res.data));
+        api.get('inventory/').then((res) => setInventoryList(res.data.results || res.data));
+        api.get('coupons/').then((res) => setCoupons(res.data.results || res.data));
+        api.get('reviews/admin/').then((res) => setReviews(res.data.results || res.data));
+        api.get('auth/admin/users/').then((res) => setUsersList(res.data.results || res.data));
+      };
+
+      useEffect(() => {
+        loadDashboardData();
+      }, []);
+
+      // Draw Chart.js graphs on dashboard
+      useEffect(() => {
+        if (currentAdminTab === 'dashboard' && chartsData) {
+          // 1. Sales trend line chart
+          if (chartCanvasRef.current) {
+            if (chartInstanceRef.current) chartInstanceRef.current.destroy();
+            const ctx = chartCanvasRef.current.getContext('2d');
+            chartInstanceRef.current = new Chart(ctx, {
+              type: 'line',
+              data: {
+                labels: chartsData.daily_sales?.map((d) => d.date) || ['Day 1', 'Day 2', 'Day 3'],
+                datasets: [{
+                  label: 'Revenue (₹)',
+                  data: chartsData.daily_sales?.map((d) => d.revenue) || [10000, 25000, 30000],
+                  borderColor: '#6366f1',
+                  backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                  borderWidth: 3,
+                  tension: 0.35,
+                  fill: true,
+                  pointBackgroundColor: '#4f46e5',
+                  pointRadius: 4,
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                  y: { grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 } } },
+                  x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                }
+              }
+            });
+          }
+
+          // 2. Category distribution doughnut chart
+          if (categoryChartRef.current) {
+            if (categoryChartInstanceRef.current) categoryChartInstanceRef.current.destroy();
+            const cCtx = categoryChartRef.current.getContext('2d');
+            categoryChartInstanceRef.current = new Chart(cCtx, {
+              type: 'doughnut',
+              data: {
+                labels: chartsData.category_revenue?.map((c) => c.category) || ['Phones', 'Apparel', 'Audio'],
+                datasets: [{
+                  data: chartsData.category_revenue?.map((c) => c.revenue) || [120000, 45000, 30000],
+                  backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6'],
+                  borderWidth: 0,
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
+                }
+              }
+            });
+          }
+        }
+      }, [currentAdminTab, chartsData]);
+
+      // Product Actions
+      const handleSaveProduct = async (formData) => {
+        try {
+          if (productModal?.id) {
+            // Edit
+            await api.patch(`products/${productModal.slug}/`, formData);
+            showToast('Product updated successfully.');
+          } else {
+            // Create
+            await api.post('products/', formData);
+            showToast('New product created successfully.');
+          }
+          setProductModal(null);
+          loadDashboardData();
+        } catch (err) {
+          showToast(err.response?.data?.message || 'Error saving product', 'error');
+        }
+      };
+
+      const handleDeleteProduct = async () => {
+        if (!deleteModal) return;
+        try {
+          await api.delete(`products/${deleteModal.slug}/`);
+          showToast(`Product "${deleteModal.name}" deleted.`);
+          setDeleteModal(null);
+          loadDashboardData();
+        } catch (err) {
+          showToast('Failed to delete product', 'error');
+        }
+      };
+
+      const handleToggleProductStatus = async (prod) => {
+        try {
+          await api.patch(`products/${prod.slug}/`, { is_active: !prod.is_active });
+          showToast(`Product ${!prod.is_active ? 'activated' : 'deactivated'}.`);
+          loadDashboardData();
+        } catch (err) {
+          showToast('Failed to change status', 'error');
+        }
+      };
+
+      // Order Actions
+      const handleUpdateOrderStatus = async (orderNumber, newStatus) => {
+        try {
+          await api.patch(`orders/${orderNumber}/update_status/`, { status: newStatus });
+          showToast(`Order #${orderNumber} updated to ${newStatus}.`);
+          loadDashboardData();
+          if (orderDetailModal && orderDetailModal.order_number === orderNumber) {
+            setOrderDetailModal({ ...orderDetailModal, status: newStatus });
+          }
+        } catch (err) {
+          showToast('Status update failed', 'error');
+        }
+      };
+
+      // Restock Action
+      const handleRestockSubmit = async (inventoryId, changeQty, reason, notes) => {
+        try {
+          await api.post(`inventory/${inventoryId}/adjust_stock/`, {
+            quantity_change: changeQty,
+            reason: reason || 'restock',
+            notes: notes || 'Admin restock',
+          });
+          showToast('Inventory successfully updated.');
+          setRestockModal(null);
+          loadDashboardData();
+        } catch (err) {
+          showToast(err.response?.data?.detail || 'Restock failed', 'error');
+        }
+      };
+
+      // Review Moderation
+      const handleApproveReview = async (reviewId) => {
+        try {
+          await api.post(`reviews/admin/${reviewId}/approve/`);
+          showToast('Review approved & published.');
+          loadDashboardData();
+        } catch (err) {
+          showToast('Error approving review', 'error');
+        }
+      };
+
+      const handleRejectReview = async (reviewId) => {
+        try {
+          await api.post(`reviews/admin/${reviewId}/reject/`);
+          showToast('Review hidden from store.');
+          loadDashboardData();
+        } catch (err) {
+          showToast('Error rejecting review', 'error');
+        }
+      };
+
+      return (
+        <div className="flex flex-1 min-h-[calc(100vh-37px)] bg-slate-900 text-slate-100">
+          {/* Admin Sidebar */}
+          <aside className="w-64 bg-slate-950 border-r border-slate-800 flex flex-col flex-shrink-0">
+            {/* Sidebar Top Brand */}
+            <div className="p-5 border-b border-slate-800/80 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+                  <i className="fa-solid fa-shield-halved"></i>
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-white tracking-wide">SmartCart Admin</h3>
+                  <span className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider block -mt-0.5">Control Center</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Navigation Links */}
+            <nav className="p-3 space-y-1 flex-1 overflow-y-auto text-xs font-semibold">
+              {[
+                { id: 'dashboard', label: 'Dashboard Overview', icon: 'fa-chart-pie' },
+                { id: 'products', label: 'Product Catalog', icon: 'fa-box-open', badge: products.length },
+                { id: 'orders', label: 'Orders Management', icon: 'fa-receipt', badge: orders.length },
+                { id: 'inventory', label: 'Inventory & Stock', icon: 'fa-warehouse', badge: kpiStats?.low_stock_count, alert: true },
+                { id: 'categories', label: 'Categories & Brands', icon: 'fa-tags' },
+                { id: 'coupons', label: 'Coupons & Discounts', icon: 'fa-ticket' },
+                { id: 'reviews', label: 'Review Moderation', icon: 'fa-star-half-stroke', badge: reviews.length },
+                { id: 'users', label: 'Customer Users', icon: 'fa-users', badge: usersList.length },
+                { id: 'reports', label: 'Sales Reports & Export', icon: 'fa-file-invoice-dollar' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setCurrentAdminTab(item.id)}
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all ${
+                    currentAdminTab === item.id
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}>
+                  <div className="flex items-center gap-3">
+                    <i className={`fa-solid ${item.icon} w-4 text-center text-sm`}></i>
+                    <span>{item.label}</span>
+                  </div>
+                  {item.badge !== undefined && item.badge > 0 && (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                      item.alert
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : 'bg-slate-800 text-slate-300'
+                    }`}>
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </nav>
+
+            {/* Sidebar Bottom Profile */}
+            <div className="p-4 border-t border-slate-800/80 bg-slate-950/80">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-slate-800 text-slate-300 font-bold text-xs flex items-center justify-center">
+                    AD
+                  </div>
+                  <div className="truncate text-xs">
+                    <p className="font-bold text-slate-200 truncate">{currentUser?.full_name || 'Admin'}</p>
+                    <p className="text-[10px] text-slate-500 truncate">{currentUser?.email}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={onSwitchToCustomer}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                  title="Return to Customer Store">
+                  <i className="fa-solid fa-store"></i>
+                </button>
+              </div>
+            </div>
+          </aside>
+
+          {/* Admin Content Area */}
+          <main className="flex-1 p-6 sm:p-8 overflow-y-auto bg-slate-900 text-slate-100">
+            {/* Admin Quick Action / Tab Jump Bar */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 border-b border-slate-800 scrollbar-none">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap mr-1">
+                <i className="fa-solid fa-layer-group text-indigo-400"></i> Module:
+              </span>
+              {[
+                { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie' },
+                { id: 'products', label: 'Catalog', icon: 'fa-box-open' },
+                { id: 'orders', label: 'Orders', icon: 'fa-receipt' },
+                { id: 'inventory', label: 'Stock Alerts', icon: 'fa-warehouse' },
+                { id: 'categories', label: 'Categories', icon: 'fa-tags' },
+                { id: 'coupons', label: 'Coupons', icon: 'fa-ticket' },
+                { id: 'reviews', label: 'Reviews', icon: 'fa-star-half-stroke' },
+                { id: 'users', label: 'Customers', icon: 'fa-users' },
+                { id: 'reports', label: 'Reports', icon: 'fa-file-invoice-dollar' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setCurrentAdminTab(tab.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-2 transition-all ${
+                    currentAdminTab === tab.id
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : 'bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800'
+                  }`}>
+                  <i className={`fa-solid ${tab.icon}`}></i>
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+              <div className="ml-auto flex items-center gap-2 pl-3">
+                <button
+                  onClick={onSwitchToCustomer}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5 whitespace-nowrap">
+                  <i className="fa-solid fa-store"></i> Customer View
+                </button>
+              </div>
+            </div>
+            {/* 1. DASHBOARD OVERVIEW */}
+            {currentAdminTab === 'dashboard' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-white">Administrative Overview</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Real-time metrics, order tracking and sales performance.</p>
+                  </div>
+                  <button
+                    onClick={loadDashboardData}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold flex items-center gap-2">
+                    <i className="fa-solid fa-arrows-rotate"></i> Refresh
+                  </button>
+                </div>
+
+                {/* KPI Metrics */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 shadow-sm">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Revenue</span>
+                    <div className="text-2xl font-black text-white mt-1">₹{kpiStats?.total_revenue?.toLocaleString() || 0}</div>
+                    <span className="text-[10px] text-emerald-400 font-semibold mt-1 inline-flex items-center gap-1">
+                      <i className="fa-solid fa-arrow-trend-up"></i> Verified Payments
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 shadow-sm">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Orders Processed</span>
+                    <div className="text-2xl font-black text-white mt-1">{kpiStats?.total_orders || 0}</div>
+                    <span className="text-[10px] text-indigo-400 font-semibold mt-1 block">
+                      Pending: <strong>{kpiStats?.pending_orders || 0}</strong> • Delivered: <strong>{kpiStats?.delivered_orders || 0}</strong>
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 shadow-sm">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Products</span>
+                    <div className="text-2xl font-black text-white mt-1">{kpiStats?.total_products || 0}</div>
+                    <span className="text-[10px] text-slate-400 mt-1 block">In Catalog</span>
+                  </div>
+
+                  <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 shadow-sm">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Inventory Alerts</span>
+                    <div className="text-2xl font-black text-amber-400 mt-1">{kpiStats?.low_stock_count || 0}</div>
+                    <span className="text-[10px] text-rose-400 font-semibold mt-1 block">
+                      Out of Stock: <strong>{kpiStats?.out_of_stock_count || 0}</strong>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Charts: Sales Trend & Category Distribution */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="lg:col-span-2 bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-sm">
+                    <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 flex items-center justify-between">
+                      <span>Daily Sales Trajectory (INR)</span>
+                      <span className="text-[10px] text-indigo-400 font-mono">Live Chart.js Feed</span>
+                    </h3>
+                    <div className="h-64">
+                      <canvas ref={chartCanvasRef}></canvas>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800 shadow-sm">
+                    <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4">
+                      Revenue by Category
+                    </h3>
+                    <div className="h-64">
+                      <canvas ref={categoryChartRef}></canvas>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent Orders Quick Snapshot */}
+                <div className="bg-slate-950 rounded-3xl border border-slate-800 shadow-sm overflow-hidden">
+                  <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+                    <h3 className="font-bold text-xs uppercase tracking-wider text-slate-300">Latest Customer Orders</h3>
+                    <button
+                      onClick={() => setCurrentAdminTab('orders')}
+                      className="text-xs text-indigo-400 font-bold hover:underline">
+                      View All Orders
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-900/60 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                        <tr>
+                          <th className="p-3.5">Order #</th>
+                          <th className="p-3.5">Customer</th>
+                          <th className="p-3.5">Amount</th>
+                          <th className="p-3.5">Payment</th>
+                          <th className="p-3.5">Status</th>
+                          <th className="p-3.5">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80 text-slate-300">
+                        {orders.slice(0, 5).map((o) => (
+                          <tr key={o.id} className="hover:bg-slate-800/30">
+                            <td className="p-3.5 font-mono font-bold text-white">{o.order_number}</td>
+                            <td className="p-3.5">{o.customer_name || o.customer_email}</td>
+                            <td className="p-3.5 font-bold text-white">₹{Number(o.total_amount).toLocaleString()}</td>
+                            <td className="p-3.5">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                o.payment_status === 'paid' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
+                              }`}>
+                                {o.payment_status}
+                              </span>
+                            </td>
+                            <td className="p-3.5">
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 uppercase">
+                                {o.status}
+                              </span>
+                            </td>
+                            <td className="p-3.5">
+                              <button
+                                onClick={() => setOrderDetailModal(o)}
+                                className="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded-lg text-xs font-semibold">
+                                Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. PRODUCT CATALOG MANAGEMENT */}
+            {currentAdminTab === 'products' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-white">Product Catalog Management</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Create, modify, price, and disable store products.</p>
+                  </div>
+                  <button
+                    onClick={() => setProductModal('create')}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2">
+                    <i className="fa-solid fa-plus"></i> Add New Product
+                  </button>
+                </div>
+
+                <div className="bg-slate-950 rounded-3xl border border-slate-800 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-900/60 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                        <tr>
+                          <th className="p-3.5">Product</th>
+                          <th className="p-3.5">SKU</th>
+                          <th className="p-3.5">Category</th>
+                          <th className="p-3.5">Base Price</th>
+                          <th className="p-3.5">Discount</th>
+                          <th className="p-3.5">Final Price</th>
+                          <th className="p-3.5">Status</th>
+                          <th className="p-3.5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80 text-slate-300">
+                        {products.map((p) => (
+                          <tr key={p.id} className="hover:bg-slate-800/30">
+                            <td className="p-3.5 flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg bg-slate-800 overflow-hidden flex-shrink-0">
+                                {p.primary_image ? (
+                                  <img src={p.primary_image} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="flex items-center justify-center h-full text-slate-500"><i className="fa-solid fa-image"></i></div>
+                                )}
+                              </div>
+                              <span className="font-bold text-white max-w-xs truncate">{p.name}</span>
+                            </td>
+                            <td className="p-3.5 font-mono text-slate-400">{p.sku}</td>
+                            <td className="p-3.5">{p.category_name}</td>
+                            <td className="p-3.5">₹{Number(p.base_price).toLocaleString()}</td>
+                            <td className="p-3.5 text-rose-400 font-semibold">{parseInt(p.discount_percentage)}%</td>
+                            <td className="p-3.5 font-black text-white">₹{Number(p.final_price).toLocaleString()}</td>
+                            <td className="p-3.5">
+                              <button
+                                onClick={() => handleToggleProductStatus(p)}
+                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                  p.is_active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
+                                }`}>
+                                {p.is_active ? 'Active' : 'Disabled'}
+                              </button>
+                            </td>
+                            <td className="p-3.5 text-right space-x-2">
+                              <button
+                                onClick={() => setProductModal(p)}
+                                className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-semibold">
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => setDeleteModal(p)}
+                                className="px-2.5 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 rounded-lg text-xs font-semibold">
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 3. ORDER MANAGEMENT */}
+            {currentAdminTab === 'orders' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-white">Orders & Fulfillment</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Track and progress orders through lifecycle stages.</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950 rounded-3xl border border-slate-800 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-900/60 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                        <tr>
+                          <th className="p-3.5">Order #</th>
+                          <th className="p-3.5">Customer</th>
+                          <th className="p-3.5">Date</th>
+                          <th className="p-3.5">Total Amount</th>
+                          <th className="p-3.5">Payment</th>
+                          <th className="p-3.5">Current Status</th>
+                          <th className="p-3.5">Advance Status</th>
+                          <th className="p-3.5 text-right">Inspect</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80 text-slate-300">
+                        {orders.map((o) => (
+                          <tr key={o.id} className="hover:bg-slate-800/30">
+                            <td className="p-3.5 font-mono font-bold text-white">{o.order_number}</td>
+                            <td className="p-3.5">{o.customer_name || o.customer_email}</td>
+                            <td className="p-3.5 text-slate-400">{new Date(o.created_at).toLocaleDateString()}</td>
+                            <td className="p-3.5 font-extrabold text-white">₹{Number(o.total_amount).toLocaleString()}</td>
+                            <td className="p-3.5">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                o.payment_status === 'paid' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
+                              }`}>
+                                {o.payment_status}
+                              </span>
+                            </td>
+                            <td className="p-3.5">
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 uppercase">
+                                {o.status.replace('_', ' ')}
+                              </span>
+                            </td>
+                            <td className="p-3.5">
+                              <select
+                                value={o.status}
+                                onChange={(e) => handleUpdateOrderStatus(o.order_number, e.target.value)}
+                                className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:ring-1 focus:ring-indigo-500">
+                                <option value="pending">Pending</option>
+                                <option value="confirmed">Confirmed</option>
+                                <option value="processing">Processing</option>
+                                <option value="shipped">Shipped</option>
+                                <option value="out_for_delivery">Out for Delivery</option>
+                                <option value="delivered">Delivered</option>
+                                <option value="cancelled">Cancelled</option>
+                              </select>
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <button
+                                onClick={() => setOrderDetailModal(o)}
+                                className="px-3 py-1 bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 rounded-lg text-xs font-semibold">
+                                View Items
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 4. INVENTORY CONTROL */}
+            {currentAdminTab === 'inventory' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-white">Inventory & Stock Tracking</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Real-time available stock levels with safe restocking and audit history.</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950 rounded-3xl border border-slate-800 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-900/60 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                        <tr>
+                          <th className="p-3.5">Product & Variant</th>
+                          <th className="p-3.5">SKU</th>
+                          <th className="p-3.5">Available Units</th>
+                          <th className="p-3.5">Low Threshold</th>
+                          <th className="p-3.5">Status Flag</th>
+                          <th className="p-3.5 text-right">Adjustment</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80 text-slate-300">
+                        {inventoryList.map((inv) => (
+                          <tr key={inv.id} className="hover:bg-slate-800/30">
+                            <td className="p-3.5 font-bold text-white">
+                              {inv.product_name} <span className="font-normal text-slate-400">({inv.variant_title})</span>
+                            </td>
+                            <td className="p-3.5 font-mono text-slate-400">{inv.variant_sku}</td>
+                            <td className="p-3.5 font-extrabold text-white text-sm">{inv.available_stock}</td>
+                            <td className="p-3.5 text-slate-400">{inv.low_stock_threshold}</td>
+                            <td className="p-3.5">
+                              {inv.status === 'in_stock' && (
+                                <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 font-bold text-[10px] rounded-full">
+                                  IN STOCK
+                                </span>
+                              )}
+                              {inv.status === 'low_stock' && (
+                                <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-300 font-bold text-[10px] rounded-full">
+                                  LOW STOCK
+                                </span>
+                              )}
+                              {inv.status === 'out_of_stock' && (
+                                <span className="px-2.5 py-0.5 bg-rose-500/20 text-rose-300 font-bold text-[10px] rounded-full">
+                                  OUT OF STOCK
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <button
+                                onClick={() => setRestockModal(inv)}
+                                className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs transition-colors">
+                                Restock / Adjust
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 5. CATEGORIES & BRANDS */}
+            {currentAdminTab === 'categories' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-white">Categories & Brands</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Manage product taxonomy and manufacturers.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setCategoryModal(true)}
+                      className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold">
+                      + New Category
+                    </button>
+                    <button
+                      onClick={() => setBrandModal(true)}
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold">
+                      + New Brand
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Categories Card */}
+                  <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-sm">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Product Categories</h3>
+                    <div className="divide-y divide-slate-800">
+                      {categories.map((c) => (
+                        <div key={c.id} className="py-2.5 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-bold text-white">{c.name}</span>
+                            <span className="text-slate-500 ml-2 font-mono">({c.slug})</span>
+                          </div>
+                          <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded">Active</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Brands Card */}
+                  <div className="bg-slate-950 p-5 rounded-3xl border border-slate-800 shadow-sm">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Brands</h3>
+                    <div className="divide-y divide-slate-800">
+                      {brands.map((b) => (
+                        <div key={b.id} className="py-2.5 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-bold text-white">{b.name}</span>
+                            <span className="text-slate-500 ml-2 font-mono">({b.slug})</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400">{b.products_count || 0} products</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 6. COUPON MANAGEMENT */}
+            {currentAdminTab === 'coupons' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-white">Coupons & Discounts</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Create promotion codes with minimum order values and limits.</p>
+                  </div>
+                  <button
+                    onClick={() => setCouponModal(true)}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2">
+                    <i className="fa-solid fa-plus"></i> Create Coupon
+                  </button>
+                </div>
+
+                <div className="bg-slate-950 rounded-3xl border border-slate-800 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-900/60 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                        <tr>
+                          <th className="p-3.5">Code</th>
+                          <th className="p-3.5">Type</th>
+                          <th className="p-3.5">Discount Value</th>
+                          <th className="p-3.5">Min Order</th>
+                          <th className="p-3.5">Usage</th>
+                          <th className="p-3.5">Expiry Date</th>
+                          <th className="p-3.5 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80 text-slate-300">
+                        {coupons.map((c) => (
+                          <tr key={c.id}>
+                            <td className="p-3.5 font-mono font-bold text-white">{c.code}</td>
+                            <td className="p-3.5 capitalize">{c.discount_type}</td>
+                            <td className="p-3.5 font-bold text-emerald-400">
+                              {c.discount_type === 'percentage' ? `${c.discount_value}%` : `₹${c.discount_value}`}
+                            </td>
+                            <td className="p-3.5">₹{c.min_order_amount}</td>
+                            <td className="p-3.5 font-mono">{c.times_used} / {c.usage_limit || '∞'}</td>
+                            <td className="p-3.5 text-slate-400">{new Date(c.expiry_date).toLocaleDateString()}</td>
+                            <td className="p-3.5 text-right">
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                c.is_active ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-500'
+                              }`}>
+                                {c.is_active ? 'Active' : 'Expired'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 7. REVIEWS MODERATION */}
+            {currentAdminTab === 'reviews' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-white">Product Reviews Moderation</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Approve verified customer reviews or hide spam.</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950 rounded-3xl border border-slate-800 shadow-sm overflow-hidden">
+                  <div className="divide-y divide-slate-800">
+                    {reviews.map((rev) => (
+                      <div key={rev.id} className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="space-y-1 max-w-2xl">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-white">{rev.user_name || rev.user_email}</span>
+                            <span className="text-slate-500 text-xs">on</span>
+                            <span className="font-bold text-xs text-indigo-400">{rev.product_name}</span>
+                            <div className="flex text-amber-400 text-[10px] ml-2">
+                              {[1, 2, 3, 4, 5].map((s) => (
+                                <i key={s} className={`fa-solid fa-star ${s <= rev.rating ? 'text-amber-400' : 'text-slate-700'}`}></i>
+                              ))}
+                            </div>
+                          </div>
+                          {rev.title && <h5 className="text-xs font-bold text-slate-200">{rev.title}</h5>}
+                          <p className="text-xs text-slate-400">{rev.comment}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {rev.is_approved ? (
+                            <button
+                              onClick={() => handleRejectReview(rev.id)}
+                              className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg text-xs font-semibold">
+                              Reject / Hide
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleApproveReview(rev.id)}
+                              className="px-3 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg text-xs font-semibold">
+                              Approve
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 8. CUSTOMER USERS DIRECTORY */}
+            {currentAdminTab === 'users' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-extrabold text-white">Registered Customer Users</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Directory of registered shoppers and account verification status.</p>
+                </div>
+
+                <div className="bg-slate-950 rounded-3xl border border-slate-800 shadow-sm overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-900/60 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                      <tr>
+                        <th className="p-3.5">Customer Name</th>
+                        <th className="p-3.5">Email</th>
+                        <th className="p-3.5">Phone</th>
+                        <th className="p-3.5">Role</th>
+                        <th className="p-3.5">Joined Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800 text-slate-300">
+                      {usersList.map((u) => (
+                        <tr key={u.id} className="hover:bg-slate-800/30">
+                          <td className="p-3.5 font-bold text-white">{u.full_name || u.username}</td>
+                          <td className="p-3.5 text-slate-400">{u.email}</td>
+                          <td className="p-3.5">{u.phone_number || '—'}</td>
+                          <td className="p-3.5">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              u.role === 'admin' ? 'bg-amber-500/20 text-amber-300' : 'bg-indigo-500/20 text-indigo-300'
+                            }`}>
+                              {u.role.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-slate-500">{new Date(u.date_joined).toLocaleDateString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* 9. SALES REPORTS */}
+            {currentAdminTab === 'reports' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-white">Sales & Financial Reports</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Executive performance review and order revenue summary.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Average Order Value</span>
+                    <div className="text-3xl font-black text-white">
+                      ₹{orders.length ? Math.round(orders.reduce((acc, o) => acc + Number(o.total_amount), 0) / orders.length).toLocaleString() : 0}
+                    </div>
+                    <span className="text-[11px] text-slate-500 mt-2 block">Calculated across all historical orders</span>
+                  </div>
+
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Order Completion Rate</span>
+                    <div className="text-3xl font-black text-emerald-400">
+                      {orders.length ? Math.round((orders.filter(o => o.status !== 'cancelled').length / orders.length) * 100) : 100}%
+                    </div>
+                    <span className="text-[11px] text-slate-500 mt-2 block">Excludes cancelled customer orders</span>
+                  </div>
+
+                  <div className="bg-slate-950 p-6 rounded-3xl border border-slate-800">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">Total Tax Collected (18%)</span>
+                    <div className="text-3xl font-black text-indigo-400">
+                      ₹{Math.round(orders.reduce((acc, o) => acc + Number(o.tax_amount || 0), 0)).toLocaleString()}
+                    </div>
+                    <span className="text-[11px] text-slate-500 mt-2 block">GST liabilities recorded</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* ADMIN MODALS */}
+          {/* Add / Edit Product Modal */}
+          {productModal && (
+            <AdminProductFormModal
+              product={productModal === 'create' ? null : productModal}
+              categories={categories}
+              brands={brands}
+              onClose={() => setProductModal(null)}
+              onSave={handleSaveProduct}
+            />
+          )}
+
+          {/* Confirm Delete Product Modal */}
+          {deleteModal && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full text-center">
+                <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center text-xl mx-auto mb-3">
+                  <i className="fa-solid fa-trash-can"></i>
+                </div>
+                <h3 className="font-extrabold text-base text-white">Delete Product?</h3>
+                <p className="text-xs text-slate-400 mt-1 mb-6">
+                  Are you sure you want to permanently delete <strong>{deleteModal.name}</strong>?
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDeleteModal(null)}
+                    className="flex-1 py-2.5 bg-slate-800 text-slate-300 font-semibold rounded-xl text-xs hover:bg-slate-700">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteProduct}
+                    className="flex-1 py-2.5 bg-rose-600 text-white font-bold rounded-xl text-xs hover:bg-rose-700">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Order Details Modal */}
+          {orderDetailModal && (
+            <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-xl w-full max-h-[85vh] overflow-y-auto">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+                  <div>
+                    <h3 className="font-extrabold text-base text-white">Order #{orderDetailModal.order_number}</h3>
+                    <span className="text-xs text-slate-400">{new Date(orderDetailModal.created_at).toLocaleString()}</span>
+                  </div>
+                  <button onClick={() => setOrderDetailModal(null)} className="text-slate-400 hover:text-white">
+                    <i className="fa-solid fa-xmark text-lg"></i>
+                  </button>
+                </div>
+
+                <div className="space-y-4 text-xs">
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                    <h4 className="font-bold text-slate-300 uppercase tracking-wider mb-2">Shipping Snapshot</h4>
+                    {orderDetailModal.shipping_address_snapshot ? (
+                      <p className="text-slate-400">
+                        {orderDetailModal.shipping_address_snapshot.full_name} • {orderDetailModal.shipping_address_snapshot.street_address}, {orderDetailModal.shipping_address_snapshot.city}, {orderDetailModal.shipping_address_snapshot.postal_code}
+                      </p>
+                    ) : (
+                      <p className="text-slate-500 italic">No snapshot recorded.</p>
+                    )}
+                  </div>
+
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                    <h4 className="font-bold text-slate-300 uppercase tracking-wider mb-2">Line Items</h4>
+                    <div className="divide-y divide-slate-800">
+                      {orderDetailModal.items?.map((item) => (
+                        <div key={item.id} className="py-2 flex justify-between">
+                          <div>
+                            <span className="font-bold text-white">{item.product_name}</span>
+                            <span className="text-slate-400 block text-[11px]">{item.variant_title} (Qty: {item.quantity})</span>
+                          </div>
+                          <span className="font-bold text-white">₹{Number(item.subtotal).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center bg-slate-950 p-4 rounded-2xl border border-slate-800 text-sm">
+                    <span className="font-bold text-slate-400">Total Order Value:</span>
+                    <span className="font-black text-indigo-400 text-lg">₹{Number(orderDetailModal.total_amount).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Restock Inventory Modal */}
+          {restockModal && (
+            <AdminRestockModal
+              inventory={restockModal}
+              onClose={() => setRestockModal(null)}
+              onSubmit={handleRestockSubmit}
+            />
+          )}
+
+          {/* Create Coupon Modal */}
+          {couponModal && (
+            <AdminCouponModal
+              onClose={() => setCouponModal(false)}
+              onSuccess={() => { setCouponModal(false); loadDashboardData(); showToast('Coupon created!'); }}
+            />
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ADMIN PRODUCT CREATE / EDIT MODAL
+    // ==========================================
+    function AdminProductFormModal({ product, categories, brands, onClose, onSave }) {
+      const [form, setForm] = useState({
+        name: product?.name || '',
+        sku: product?.sku || '',
+        category_id: product?.category?.id || (categories[0]?.id || ''),
+        brand_id: product?.brand?.id || (brands[0]?.id || ''),
+        base_price: product?.base_price || '',
+        discount_percentage: product?.discount_percentage || '0.00',
+        description: product?.description || '',
+        image_url: product?.image_url || product?.primary_image || '',
+        initial_stock: 20,
+      });
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(form);
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+              <h3 className="font-extrabold text-base text-white">
+                {product ? `Edit Product: ${product.name}` : 'Create New Product'}
+              </h3>
+              <button onClick={onClose} className="text-slate-400 hover:text-white">
+                <i className="fa-solid fa-xmark text-lg"></i>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
+              <div>
+                <label className="text-slate-400 font-bold block mb-1">Product Title</label>
+                <input
+                  type="text"
+                  required
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. Sony WH-1000XM5 Noise Canceling Headphones"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-400 font-bold block mb-1">SKU Code</label>
+                  <input
+                    type="text"
+                    required
+                    value={form.sku}
+                    onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                    placeholder="e.g. SNY-WH1000XM5"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 font-mono text-white focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-400 font-bold block mb-1">Image URL (CDN or Unsplash)</label>
+                  <input
+                    type="url"
+                    value={form.image_url}
+                    onChange={(e) => setForm({ ...form, image_url: e.target.value })}
+                    placeholder="https://..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-400 font-bold block mb-1">Category</label>
+                  <select
+                    value={form.category_id}
+                    onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500">
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-400 font-bold block mb-1">Brand</label>
+                  <select
+                    value={form.brand_id}
+                    onChange={(e) => setForm({ ...form, brand_id: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500">
+                    <option value="">None</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-slate-400 font-bold block mb-1">Base Price (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={form.base_price}
+                    onChange={(e) => setForm({ ...form, base_price: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-400 font-bold block mb-1">Discount (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={form.discount_percentage}
+                    onChange={(e) => setForm({ ...form, discount_percentage: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                {!product && (
+                  <div>
+                    <label className="text-slate-400 font-bold block mb-1">Initial Stock</label>
+                    <input
+                      type="number"
+                      value={form.initial_stock}
+                      onChange={(e) => setForm({ ...form, initial_stock: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-slate-400 font-bold block mb-1">Description</label>
+                <textarea
+                  rows="3"
+                  required
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow">
+                  Save Product
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ADMIN RESTOCK MODAL
+    // ==========================================
+    function AdminRestockModal({ inventory, onClose, onSubmit }) {
+      const [qty, setQty] = useState(10);
+      const [reason, setReason] = useState('restock');
+      const [notes, setNotes] = useState('Manual warehouse restock');
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full">
+            <h3 className="font-extrabold text-base text-white mb-1">Adjust Inventory</h3>
+            <p className="text-xs text-slate-400 mb-4">{inventory.product_name} ({inventory.variant_title})</p>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-400 font-bold block mb-1">Quantity to Add (Use negative to deduct)</label>
+                <input
+                  type="number"
+                  value={qty}
+                  onChange={(e) => setQty(Number(e.target.value))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-400 font-bold block mb-1">Reason for Adjustment</label>
+                <select
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white">
+                  <option value="restock">Manual Restock</option>
+                  <option value="audit">Stock Audit Correction</option>
+                  <option value="damage">Damaged Goods Write-off</option>
+                  <option value="return">Customer Return</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-400 font-bold block mb-1">Notes</label>
+                <input
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={onClose} className="flex-1 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => onSubmit(inventory.id, qty, reason, notes)}
+                  className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold">
+                  Submit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // ADMIN CREATE COUPON MODAL
+    // ==========================================
+    function AdminCouponModal({ onClose, onSuccess }) {
+      const [form, setForm] = useState({
+        code: '',
+        discount_type: 'percentage',
+        discount_value: '10.00',
+        min_order_amount: '500.00',
+        usage_limit: 100,
+        expiry_days: 30,
+      });
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+          const expDate = new Date();
+          expDate.setDate(expDate.getDate() + Number(form.expiry_days));
+          await api.post('coupons/', {
+            code: form.code.toUpperCase().trim(),
+            discount_type: form.discount_type,
+            discount_value: form.discount_value,
+            min_order_amount: form.min_order_amount,
+            usage_limit: form.usage_limit,
+            expiry_date: expDate.toISOString(),
+          });
+          onSuccess();
+        } catch (err) {
+          alert('Error creating coupon: ' + (err.response?.data?.message || 'Check fields'));
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full">
+            <h3 className="font-extrabold text-base text-white mb-4">Create New Promotion Coupon</h3>
+            <form onSubmit={handleSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-400 font-bold block mb-1">Coupon Code</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. FLASH25"
+                  value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono uppercase"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-slate-400 font-bold block mb-1">Type</label>
+                  <select
+                    value={form.discount_type}
+                    onChange={(e) => setForm({ ...form, discount_type: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white">
+                    <option value="percentage">Percentage (%)</option>
+                    <option value="fixed">Fixed (₹)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-400 font-bold block mb-1">Value</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={form.discount_value}
+                    onChange={(e) => setForm({ ...form, discount_value: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-slate-400 font-bold block mb-1">Min Order (₹)</label>
+                  <input
+                    type="number"
+                    value={form.min_order_amount}
+                    onChange={(e) => setForm({ ...form, min_order_amount: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-400 font-bold block mb-1">Validity (Days)</label>
+                  <input
+                    type="number"
+                    value={form.expiry_days}
+                    onChange={(e) => setForm({ ...form, expiry_days: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-3">
+                <button type="button" onClick={onClose} className="flex-1 py-2 bg-slate-800 text-slate-300 rounded-xl font-bold">
+                  Cancel
+                </button>
+                <button type="submit" className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold">
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
+    // REUSABLE COMPONENTS (CARD, MODALS, AUTH)
+    // ==========================================
+    function ProductCard({ product, onClick, onToggleWishlist, onAddToCart }) {
+      return (
+        <div className="group bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-xl hover:border-slate-300 transition-all duration-300 flex flex-col">
+          <div className="relative bg-slate-100 h-52 flex items-center justify-center overflow-hidden cursor-pointer" onClick={onClick}>
+            {product.primary_image ? (
+              <img src={product.primary_image} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+            ) : (
+              <div className="text-slate-300 text-5xl"><i className="fa-solid fa-image"></i></div>
+            )}
+            {Number(product.discount_percentage) > 0 && (
+              <span className="absolute top-3 left-3 bg-rose-500 text-white text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-sm">
+                -{parseInt(product.discount_percentage)}% OFF
+              </span>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggleWishlist(product.id); }}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm text-slate-600 hover:text-rose-500 flex items-center justify-center text-sm shadow-sm transition-colors">
+              <i className="fa-regular fa-heart"></i>
+            </button>
+          </div>
+
+          <div className="p-4 flex-1 flex flex-col">
+            <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+              <span className="font-semibold uppercase tracking-wider text-indigo-600">{product.brand_name || product.category_name}</span>
+              <div className="flex items-center gap-1 text-amber-500 font-bold">
+                <i className="fa-solid fa-star text-[10px]"></i>
+                <span>{product.average_rating || '5.0'}</span>
+              </div>
+            </div>
+
+            <h4 onClick={onClick} className="font-bold text-sm text-slate-800 line-clamp-2 hover:text-indigo-600 cursor-pointer mb-2">
+              {product.name}
+            </h4>
+
+            <div className="mt-auto pt-3 border-t border-slate-100 flex items-center justify-between">
+              <div>
+                <span className="text-base font-extrabold text-slate-900">₹{Number(product.final_price).toLocaleString()}</span>
+                {Number(product.discount_percentage) > 0 && (
+                  <span className="text-xs text-slate-400 line-through ml-1.5">₹{Number(product.base_price).toLocaleString()}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onAddToCart && onAddToCart(product); }}
+                  className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white rounded-xl text-xs font-bold flex items-center gap-1 transition-all border border-indigo-200 hover:border-indigo-600"
+                  title="Quick Add to Cart">
+                  <i className="fa-solid fa-cart-plus"></i>
+                  <span>Add</span>
+                </button>
+                <button onClick={onClick} className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors">
+                  <span>View</span>
+                  <i className="fa-solid fa-arrow-right text-[10px]"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ProductModal({ productSlug, onClose, currentUser, showToast, onRefreshCart, onSelectRecommendation }) {
+      const [product, setProduct] = useState(null);
+      const [selectedVariant, setSelectedVariant] = useState(null);
+      const [quantity, setQuantity] = useState(1);
+      const [recommendations, setRecommendations] = useState([]);
+      const [reviewsData, setReviewsData] = useState(null);
+      const [activeTab, setActiveTab] = useState('overview');
+      const [reviewForm, setReviewForm] = useState({ rating: 5, title: '', comment: '' });
+
+      useEffect(() => {
+        api.get(`products/${productSlug}/`).then((res) => {
+          const data = res.data.data || res.data;
+          setProduct(data);
+          if (data.variants && data.variants.length > 0) setSelectedVariant(data.variants[0]);
+          api.get(`products/${productSlug}/recommendations/`).then((r) => setRecommendations(r.data.recommendations || []));
+          api.get(`reviews/product/${data.id}/`).then((rev) => setReviewsData(rev.data));
+        });
+      }, [productSlug]);
+
+      const handleAddToCart = async () => {
+        if (!selectedVariant) return;
+        try {
+          await api.post('cart/items/', { variant_id: selectedVariant.id, quantity });
+          onRefreshCart();
+          showToast('Added to cart!');
+          onClose();
+        } catch (err) {
+          showToast(err.response?.data?.message || 'Could not add to cart', 'error');
+        }
+      };
+
+      const handleSubmitReview = async (e) => {
+        e.preventDefault();
+        if (!currentUser) { showToast('Please log in to review', 'error'); return; }
+        try {
+          await api.post(`reviews/product/${product.id}/`, reviewForm);
+          showToast('Review submitted successfully!');
+          const res = await api.get(`reviews/product/${product.id}/`);
+          setReviewsData(res.data);
+          setReviewForm({ rating: 5, title: '', comment: '' });
+        } catch (err) {
+          showToast(err.response?.data?.detail || 'Error submitting review', 'error');
+        }
+      };
+
+      if (!product) return null;
+
+      return (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative">
+            <button onClick={onClose} className="absolute top-5 right-5 z-10 w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center">
+              <i className="fa-solid fa-xmark"></i>
+            </button>
+
+            <div className="p-6 sm:p-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <div className="h-80 bg-slate-100 rounded-2xl overflow-hidden flex items-center justify-center border border-slate-100">
+                  {product.primary_image ? (
+                    <img src={product.primary_image} alt={product.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <i className="fa-solid fa-image text-slate-300 text-6xl"></i>
+                  )}
+                </div>
+
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-bold rounded-lg uppercase">{product.brand?.name || 'SmartCart'}</span>
+                    <span className="text-xs text-slate-400 font-mono">SKU: {selectedVariant?.sku || product.sku}</span>
+                  </div>
+                  <h2 className="text-2xl font-extrabold text-slate-900 mb-2 leading-snug">{product.name}</h2>
+
+                  <div className="bg-slate-50 p-4 rounded-2xl mb-5 flex items-baseline gap-3">
+                    <span className="text-3xl font-extrabold text-slate-900">
+                      ₹{selectedVariant ? Number(selectedVariant.price).toLocaleString() : Number(product.final_price).toLocaleString()}
+                    </span>
+                    {Number(product.discount_percentage) > 0 && (
+                      <span className="text-xs font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">Save {parseInt(product.discount_percentage)}%</span>
+                    )}
+                  </div>
+
+                  {product.variants && product.variants.length > 0 && (
+                    <div className="mb-5">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Select Variant ({selectedVariant?.title})</label>
+                      <div className="flex flex-wrap gap-2">
+                        {product.variants.map((v) => (
+                          <button
+                            key={v.id}
+                            onClick={() => setSelectedVariant(v)}
+                            className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                              selectedVariant?.id === v.id ? 'border-indigo-600 bg-indigo-50 text-indigo-700 shadow-sm' : 'border-slate-200 text-slate-700'
+                            }`}>
+                            {v.title}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3 mt-auto">
+                    <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
+                      <button onClick={() => setQuantity(Math.max(1, quantity - 1))} className="px-3 py-2 text-slate-600 hover:bg-slate-200">-</button>
+                      <span className="px-3 py-2 text-xs font-bold w-10 text-center">{quantity}</span>
+                      <button onClick={() => setQuantity(quantity + 1)} className="px-3 py-2 text-slate-600 hover:bg-slate-200">+</button>
+                    </div>
+                    <button
+                      onClick={handleAddToCart}
+                      disabled={selectedVariant && !selectedVariant.is_in_stock}
+                      className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-100">
+                      <i className="fa-solid fa-cart-plus"></i>
+                      {selectedVariant && !selectedVariant.is_in_stock ? 'Out of Stock' : 'Add to Shopping Cart'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabs: Details & Reviews */}
+              <div className="border-t border-slate-200 pt-6">
+                <div className="flex gap-6 border-b border-slate-200 mb-6">
+                  <button onClick={() => setActiveTab('overview')} className={`pb-3 text-xs font-bold tracking-wide uppercase ${activeTab === 'overview' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}>
+                    Description
+                  </button>
+                  <button onClick={() => setActiveTab('reviews')} className={`pb-3 text-xs font-bold tracking-wide uppercase ${activeTab === 'reviews' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}>
+                    Verified Reviews ({reviewsData?.total_reviews || 0})
+                  </button>
+                </div>
+
+                {activeTab === 'overview' ? (
+                  <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line mb-8">{product.description}</p>
+                ) : (
+                  <div className="space-y-6 mb-8">
+                    <div className="space-y-3">
+                      {reviewsData?.reviews?.map((r) => (
+                        <div key={r.id} className="p-4 rounded-xl border border-slate-100 bg-slate-50 text-xs">
+                          <div className="flex justify-between font-bold text-slate-800">
+                            <span>{r.user_name || r.user_email}</span>
+                            <span className="text-amber-500">{'★'.repeat(r.rating)}</span>
+                          </div>
+                          {r.title && <h6 className="font-semibold text-slate-700 mt-1">{r.title}</h6>}
+                          <p className="text-slate-600 mt-1">{r.comment}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <form onSubmit={handleSubmitReview} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                      <h5 className="font-bold text-xs uppercase text-slate-700">Write a Review</h5>
+                      <select
+                        value={reviewForm.rating}
+                        onChange={(e) => setReviewForm({ ...reviewForm, rating: Number(e.target.value) })}
+                        className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold">
+                        <option value="5">★★★★★ (5 Stars)</option>
+                        <option value="4">★★★★☆ (4 Stars)</option>
+                        <option value="3">★★★☆☆ (3 Stars)</option>
+                        <option value="2">★★☆☆☆ (2 Stars)</option>
+                        <option value="1">★☆☆☆☆ (1 Star)</option>
+                      </select>
+                      <input
+                        type="text"
+                        placeholder="Review Title"
+                        value={reviewForm.title}
+                        onChange={(e) => setReviewForm({ ...reviewForm, title: e.target.value })}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs"
+                      />
+                      <textarea
+                        rows="2"
+                        placeholder="Your review comment..."
+                        required
+                        value={reviewForm.comment}
+                        onChange={(e) => setReviewForm({ ...reviewForm, comment: e.target.value })}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs"
+                      />
+                      <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-semibold">
+                        Submit Review
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {recommendations.length > 0 && (
+                  <div className="pt-6 border-t border-slate-200">
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Recommended for You</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      {recommendations.slice(0, 4).map((rec) => (
+                        <div key={rec.id} onClick={() => onSelectRecommendation(rec)} className="bg-slate-50 p-3 rounded-xl border border-slate-100 hover:bg-white cursor-pointer">
+                          <div className="h-24 bg-slate-200 rounded-lg overflow-hidden mb-2">
+                            {rec.primary_image && <img src={rec.primary_image} alt="" className="w-full h-full object-cover" />}
+                          </div>
+                          <h6 className="font-bold text-xs text-slate-800 truncate">{rec.name}</h6>
+                          <span className="text-xs font-extrabold text-indigo-600 mt-1 block">₹{Number(rec.final_price).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function CartDrawer({ cart, onClose, onRefreshCart, currentUser, setAuthModal, showToast, onCheckoutSuccess }) {
+      const [couponCode, setCouponCode] = useState('');
+      const [couponDiscount, setCouponDiscount] = useState(0);
+      const [appliedCoupon, setAppliedCoupon] = useState(null);
+      const [paymentMethod, setPaymentMethod] = useState('razorpay');
+      const [isCheckingOut, setIsCheckingOut] = useState(false);
+      const [userAddresses, setUserAddresses] = useState([]);
+      const [selectedAddressId, setSelectedAddressId] = useState(null);
+
+      useEffect(() => {
+        if (currentUser) {
+          api.get('auth/addresses/').then((res) => {
+            const addrs = res.data.results || res.data;
+            setUserAddresses(addrs);
+            const def = addrs.find((a) => a.is_default) || addrs[0];
+            if (def) setSelectedAddressId(def.id);
+          });
+        }
+      }, [currentUser]);
+
+      const handleUpdateQty = async (itemId, qty) => {
+        try {
+          await api.patch(`cart/items/${itemId}/`, { quantity: qty });
+          onRefreshCart();
+        } catch (err) {
+          showToast(err.response?.data?.message || 'Error updating item quantity', 'error');
+        }
+      };
+
+      const handleRemoveItem = async (itemId) => {
+        try {
+          await api.delete(`cart/items/${itemId}/`);
+          onRefreshCart();
+          showToast('Item removed from cart');
+        } catch (err) {
+          showToast('Error removing item', 'error');
+        }
+      };
+
+      const handleApplyCoupon = async () => {
+        if (!currentUser) { setAuthModal('login'); return; }
+        if (!couponCode) return;
+        try {
+          const res = await api.post('coupons/validate/', { code: couponCode, order_amount: cart.subtotal });
+          const cdata = res.data.data?.coupon || res.data.coupon;
+          setAppliedCoupon(cdata);
+          setCouponDiscount(cdata.discount_applied);
+          showToast(`Coupon applied! Saved ₹${cdata.discount_applied}`);
+        } catch (err) {
+          showToast(err.response?.data?.message || 'Invalid coupon code', 'error');
+        }
+      };
+
+      const handlePlaceOrder = async () => {
+        if (!currentUser) { setAuthModal('login'); return; }
+
+        if (!selectedAddressId && userAddresses.length === 0) {
+          try {
+            const addrRes = await api.post('auth/addresses/', {
+              full_name: currentUser.full_name || 'Valued Customer',
+              phone_number: currentUser.phone_number || '+91 9876543210',
+              street_address: '42 SmartCart Way',
+              city: 'Bengaluru',
+              state: 'Karnataka',
+              postal_code: '560001',
+              country: 'India',
+              is_default: true,
+            });
+            setSelectedAddressId(addrRes.data.id);
+          } catch (e) {
+            showToast('Please add a shipping address in your profile first.', 'error');
+            return;
+          }
+        }
+
+        setIsCheckingOut(true);
+        try {
+          const res = await api.post('orders/checkout/', {
+            shipping_address_id: selectedAddressId || userAddresses[0]?.id,
+            coupon_code: appliedCoupon ? appliedCoupon.code : undefined,
+            payment_method: paymentMethod,
+          });
+
+          const order = res.data.data?.order || res.data.order;
+          const orderNum = order.order_number;
+
+          if (paymentMethod === 'razorpay') {
+            const payInit = await api.post('payments/create/', { order_number: orderNum });
+            const txnId = payInit.data.data?.transaction_id || payInit.data.transaction_id;
+
+            await api.post('payments/verify/', {
+              transaction_id: txnId,
+              razorpay_payment_id: `pay_mock_${Date.now()}`,
+              razorpay_signature: 'sandbox_mock_signature',
+            });
+          }
+
+          showToast('Order confirmed and payment verified!');
+          onCheckoutSuccess();
+        } catch (err) {
+          showToast(err.response?.data?.message || 'Checkout error', 'error');
+        } finally {
+          setIsCheckingOut(false);
+        }
+      };
+
+      const subtotal = Number(cart?.subtotal || 0);
+      const discount = Number(couponDiscount || 0);
+      const shipping = subtotal > 999 || subtotal === 0 ? 0 : 99;
+      const tax = Math.round((subtotal - discount) * 0.18 * 100) / 100;
+      const grandTotal = Math.max(0, subtotal - discount + shipping + tax);
+
+      return (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/60 backdrop-blur-sm flex justify-end">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <i className="fa-solid fa-bag-shopping text-indigo-600 text-lg"></i>
+                <h3 className="font-extrabold text-base text-slate-800">Your Cart</h3>
+                <span className="text-xs bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
+                  {cart?.total_items || 0} items
+                </span>
+              </div>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1"><i className="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {!cart?.items || cart.items.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 text-2xl mx-auto mb-3">
+                    <i className="fa-solid fa-basket-shopping"></i>
+                  </div>
+                  <h4 className="font-bold text-sm text-slate-700">Your cart is empty</h4>
+                </div>
+              ) : (
+                cart.items.map((item) => (
+                  <div key={item.id} className="flex gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-100">
+                    <div className="w-16 h-16 bg-white rounded-xl overflow-hidden border border-slate-200 flex-shrink-0">
+                      {item.variant?.product_image && <img src={item.variant.product_image} alt="" className="w-full h-full object-cover" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h5 className="font-bold text-xs text-slate-800 truncate">{item.variant?.product_name}</h5>
+                      <span className="text-[10px] text-slate-400 block">{item.variant?.title}</span>
+                      <span className="text-xs font-extrabold text-slate-900 mt-1 block">₹{Number(item.variant?.price).toLocaleString()}</span>
+                    </div>
+                    <div className="flex flex-col justify-between items-end">
+                      <button onClick={() => handleRemoveItem(item.id)} className="text-slate-400 hover:text-rose-500 text-xs p-1">
+                        <i className="fa-regular fa-trash-can"></i>
+                      </button>
+                      <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white">
+                        <button onClick={() => handleUpdateQty(item.id, item.quantity - 1)} className="px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">-</button>
+                        <span className="px-2 text-xs font-bold text-slate-700">{item.quantity}</span>
+                        <button onClick={() => handleUpdateQty(item.id, item.quantity + 1)} className="px-2 py-0.5 text-xs text-slate-500 hover:bg-slate-100">+</button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {cart?.items && cart.items.length > 0 && (
+              <div className="p-5 border-t border-slate-200 bg-slate-50/70 space-y-4">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Coupon (e.g. WELCOME10)"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                    className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono uppercase focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button onClick={handleApplyCoupon} className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold">
+                    Apply
+                  </button>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-slate-600">
+                  <div className="flex justify-between">
+                    <span>Subtotal</span>
+                    <span className="font-semibold text-slate-800">₹{subtotal.toLocaleString()}</span>
+                  </div>
+                  {discount > 0 && (
+                    <div className="flex justify-between text-emerald-600 font-semibold">
+                      <span>Discount ({appliedCoupon?.code})</span>
+                      <span>-₹{discount.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>Shipping Fee</span>
+                    <span>{shipping === 0 ? <strong className="text-emerald-600">FREE</strong> : `₹${shipping}`}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>GST (18%)</span>
+                    <span>₹{tax.toLocaleString()}</span>
+                  </div>
+                  <div className="pt-2 border-t border-slate-200 flex justify-between text-sm font-extrabold text-slate-900">
+                    <span>Total</span>
+                    <span className="text-indigo-600">₹{grandTotal.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('razorpay')}
+                    className={`flex-1 p-2 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 ${
+                      paymentMethod === 'razorpay' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'
+                    }`}>
+                    <i className="fa-solid fa-credit-card text-indigo-500"></i> Razorpay Test
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('cod')}
+                    className={`flex-1 p-2 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 ${
+                      paymentMethod === 'cod' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'
+                    }`}>
+                    <i className="fa-solid fa-money-bill-wave text-emerald-500"></i> COD
+                  </button>
+                </div>
+
+                <button
+                  onClick={handlePlaceOrder}
+                  disabled={isCheckingOut}
+                  className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-2xl text-xs font-extrabold uppercase shadow-lg shadow-indigo-200 flex items-center justify-center gap-2">
+                  {isCheckingOut ? <><i className="fa-solid fa-spinner fa-spin"></i> Processing...</> : <><i className="fa-solid fa-lock"></i> Place Order (₹{grandTotal.toLocaleString()})</>}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function OrdersView({ currentUser, showToast, onBackToShop }) {
+      const [orders, setOrders] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      const fetchOrders = () => {
+        setLoading(true);
+        api.get('orders/')
+          .then((res) => setOrders(res.data.results || res.data))
+          .catch((err) => console.error(err))
+          .finally(() => setLoading(false));
+      };
+
+      useEffect(() => { fetchOrders(); }, []);
+
+      const handleCancelOrder = async (orderNumber) => {
+        if (!confirm('Cancel this order? Stock will be restored immediately.')) return;
+        try {
+          await api.post(`orders/${orderNumber}/cancel/`);
+          showToast('Order cancelled and stock restored.');
+          fetchOrders();
+        } catch (err) {
+          showToast(err.response?.data?.message || 'Could not cancel order', 'error');
+        }
+      };
+
+      return (
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-1">
+                <button onClick={onBackToShop} className="hover:text-indigo-600 flex items-center gap-1 transition-colors">
+                  <i className="fa-solid fa-house"></i> Home
+                </button>
+                <span>/</span>
+                <span className="text-slate-700">My Orders</span>
+              </div>
+              <h2 className="text-2xl font-extrabold text-slate-900">Order History & Tracking</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Track your packages, download receipts, and manage recent purchases.</p>
+            </div>
+            <button onClick={onBackToShop} className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-xs">
+              <i className="fa-solid fa-arrow-left"></i> Continue Shopping
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="text-center py-16 text-xs text-slate-400">Loading orders...</div>
+          ) : orders.length === 0 ? (
+            <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
+              <i className="fa-solid fa-box-open text-slate-300 text-5xl mb-4"></i>
+              <h4 className="font-bold text-sm text-slate-800">No orders placed yet</h4>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {orders.map((order) => (
+                <div key={order.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                  <div className="p-5 bg-slate-50/70 border-b border-slate-200 flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-4 text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Order Number</span>
+                        <span className="font-mono font-bold text-slate-800">{order.order_number}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Date</span>
+                        <span className="text-slate-700">{new Date(order.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Total</span>
+                        <span className="font-extrabold text-slate-900">₹{Number(order.total_amount).toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-bold border uppercase bg-indigo-50 text-indigo-700 border-indigo-200">
+                        {order.status.replace('_', ' ')}
+                      </span>
+                      {order.can_cancel && (
+                        <button onClick={() => handleCancelOrder(order.order_number)} className="px-3 py-1 bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 rounded-xl text-xs font-semibold">
+                          Cancel Order
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-5 divide-y divide-slate-100 text-xs">
+                    {order.items?.map((item) => (
+                      <div key={item.id} className="py-2.5 flex justify-between">
+                        <div>
+                          <h5 className="font-bold text-slate-800">{item.product_name}</h5>
+                          <span className="text-[11px] text-slate-400">{item.variant_title} (Qty: {item.quantity})</span>
+                        </div>
+                        <span className="font-bold text-slate-900">₹{Number(item.subtotal).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function WishlistView({ currentUser, showToast, fetchWishlist, onSelectProduct, onBackToShop }) {
+      const [items, setItems] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      const loadWishlist = () => {
+        setLoading(true);
+        api.get('wishlist/')
+          .then((res) => setItems(res.data.data?.items || res.data.items || []))
+          .catch((err) => console.error(err))
+          .finally(() => setLoading(false));
+      };
+
+      useEffect(() => { loadWishlist(); }, []);
+
+      const handleRemove = async (productId) => {
+        try {
+          await api.delete(`wishlist/${productId}/`);
+          loadWishlist();
+          fetchWishlist();
+          showToast('Removed from wishlist');
+        } catch (err) {
+          showToast('Could not remove item', 'error');
+        }
+      };
+
+      return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-1">
+                <button onClick={onBackToShop} className="hover:text-indigo-600 flex items-center gap-1 transition-colors">
+                  <i className="fa-solid fa-house"></i> Home
+                </button>
+                <span>/</span>
+                <span className="text-slate-700">Wishlist</span>
+              </div>
+              <h2 className="text-2xl font-extrabold text-slate-900">My Wishlist</h2>
+            </div>
+            <button onClick={onBackToShop} className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-xs">
+              <i className="fa-solid fa-arrow-left"></i> Continue Shopping
+            </button>
+          </div>
+
+          {items.length === 0 ? (
+            <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
+              <i className="fa-regular fa-heart text-slate-300 text-5xl mb-4"></i>
+              <h4 className="font-bold text-sm text-slate-800">Your wishlist is empty</h4>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {items.map((item) => (
+                <div key={item.id} className="bg-white rounded-2xl border border-slate-200 p-4 relative">
+                  <button onClick={() => handleRemove(item.product.id)} className="absolute top-3 right-3 text-slate-400 hover:text-rose-500">
+                    <i className="fa-solid fa-xmark"></i>
+                  </button>
+                  <div onClick={() => onSelectProduct(item.product)} className="h-44 bg-slate-100 rounded-xl overflow-hidden mb-3 cursor-pointer">
+                    {item.product.primary_image && <img src={item.product.primary_image} alt="" className="w-full h-full object-cover" />}
+                  </div>
+                  <h5 className="font-bold text-xs text-slate-800 truncate">{item.product.name}</h5>
+                  <div className="text-xs font-extrabold text-indigo-600 mt-1 mb-3">₹{Number(item.product.final_price).toLocaleString()}</div>
+                  <button onClick={() => onSelectProduct(item.product)} className="w-full py-2 bg-slate-900 hover:bg-indigo-600 text-white rounded-xl text-xs font-semibold">
+                    View Product
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function ProfileView({ currentUser, setCurrentUser, showToast, onBackToShop }) {
+      const [form, setForm] = useState({
+        first_name: currentUser?.first_name || '',
+        last_name: currentUser?.last_name || '',
+        phone_number: currentUser?.phone_number || '',
+      });
+      const [addresses, setAddresses] = useState([]);
+      const [newAddr, setNewAddr] = useState({ full_name: '', phone_number: '', street_address: '', city: '', state: '', postal_code: '' });
+
+      useEffect(() => {
+        api.get('auth/addresses/').then((res) => setAddresses(res.data.results || res.data));
+      }, []);
+
+      const handleUpdateProfile = async (e) => {
+        e.preventDefault();
+        try {
+          const res = await api.patch('auth/profile/', form);
+          const updated = res.data.user || res.data.data?.user;
+          setCurrentUser(updated);
+          localStorage.setItem('smartcart_user', JSON.stringify(updated));
+          showToast('Profile updated.');
+        } catch (err) {
+          showToast('Failed to update', 'error');
+        }
+      };
+
+      const handleAddAddress = async (e) => {
+        e.preventDefault();
+        try {
+          const res = await api.post('auth/addresses/', newAddr);
+          setAddresses([...addresses, res.data]);
+          setNewAddr({ full_name: '', phone_number: '', street_address: '', city: '', state: '', postal_code: '' });
+          showToast('Address saved.');
+        } catch (err) {
+          showToast('Failed to add address', 'error');
+        }
+      };
+
+      return (
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 mb-1">
+                <button onClick={onBackToShop} className="hover:text-indigo-600 flex items-center gap-1 transition-colors">
+                  <i className="fa-solid fa-house"></i> Home
+                </button>
+                <span>/</span>
+                <span className="text-slate-700">Account Profile</span>
+              </div>
+              <h2 className="text-2xl font-extrabold text-slate-900">Profile & Addresses</h2>
+            </div>
+            <button onClick={onBackToShop} className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-xs">
+              <i className="fa-solid fa-arrow-left"></i> Continue Shopping
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <h3 className="font-bold text-sm text-slate-800 mb-4">Personal Details</h3>
+              <form onSubmit={handleUpdateProfile} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="text-slate-400 block mb-1">Email</label>
+                  <input type="text" disabled value={currentUser?.email || ''} className="w-full bg-slate-100 border border-slate-200 rounded-xl px-3 py-2 text-slate-500 cursor-not-allowed" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="text" placeholder="First Name" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} className="bg-white border border-slate-200 rounded-xl px-3 py-2" />
+                  <input type="text" placeholder="Last Name" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} className="bg-white border border-slate-200 rounded-xl px-3 py-2" />
+                </div>
+                <input type="text" placeholder="Phone" value={form.phone_number} onChange={(e) => setForm({ ...form, phone_number: e.target.value })} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2" />
+                <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold">Save Changes</button>
+              </form>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-xs">
+              <h3 className="font-bold text-sm text-slate-800 mb-4">Shipping Addresses</h3>
+              <div className="space-y-2 mb-4">
+                {addresses.map((a) => (
+                  <div key={a.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                    <p className="font-bold text-slate-800">{a.full_name}</p>
+                    <p className="text-slate-600 text-[11px]">{a.street_address}, {a.city}, {a.state} - {a.postal_code}</p>
+                  </div>
+                ))}
+              </div>
+
+              <form onSubmit={handleAddAddress} className="space-y-2">
+                <input type="text" placeholder="Full Name" required value={newAddr.full_name} onChange={(e) => setNewAddr({ ...newAddr, full_name: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-1.5" />
+                <input type="text" placeholder="Phone" required value={newAddr.phone_number} onChange={(e) => setNewAddr({ ...newAddr, phone_number: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-1.5" />
+                <input type="text" placeholder="Address" required value={newAddr.street_address} onChange={(e) => setNewAddr({ ...newAddr, street_address: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-1.5" />
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="text" placeholder="City" required value={newAddr.city} onChange={(e) => setNewAddr({ ...newAddr, city: e.target.value })} className="border border-slate-200 rounded-xl px-2 py-1.5" />
+                  <input type="text" placeholder="State" required value={newAddr.state} onChange={(e) => setNewAddr({ ...newAddr, state: e.target.value })} className="border border-slate-200 rounded-xl px-2 py-1.5" />
+                  <input type="text" placeholder="PIN" required value={newAddr.postal_code} onChange={(e) => setNewAddr({ ...newAddr, postal_code: e.target.value })} className="border border-slate-200 rounded-xl px-2 py-1.5" />
+                </div>
+                <button type="submit" className="w-full py-2 bg-slate-900 text-white rounded-xl font-bold">Add Address</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function AuthModal({ type, onClose, onSwitch, onSuccess, showToast }) {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [passwordConfirm, setPasswordConfirm] = useState('');
+      const [firstName, setFirstName] = useState('');
+      const [lastName, setLastName] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const isRegister = type === 'register';
+      const isAdminLogin = type === 'admin-login';
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+
+        if (isRegister) {
+          if (password !== passwordConfirm) {
+            showToast('Passwords do not match', 'error');
+            setLoading(false);
+            return;
+          }
+          try {
+            const res = await api.post('auth/register/', {
+              email, password, password_confirm: passwordConfirm, first_name: firstName, last_name: lastName
+            });
+            const data = res.data.data || res.data;
+            localStorage.setItem('smartcart_access', data.access);
+            localStorage.setItem('smartcart_refresh', data.refresh);
+            localStorage.setItem('smartcart_user', JSON.stringify(data.user));
+            onSuccess(data.user);
+          } catch (err) {
+            showToast(err.response?.data?.message || 'Registration failed', 'error');
+          } finally { setLoading(false); }
+        } else {
+          try {
+            const res = await api.post('auth/login/', { email, password });
+            const data = res.data.data || res.data;
+            localStorage.setItem('smartcart_access', data.access);
+            localStorage.setItem('smartcart_refresh', data.refresh);
+            localStorage.setItem('smartcart_user', JSON.stringify(data.user));
+            onSuccess(data.user);
+          } catch (err) {
+            showToast(err.response?.data?.message || 'Login failed', 'error');
+          } finally { setLoading(false); }
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 sm:p-8 shadow-2xl relative">
+            <button onClick={onClose} className="absolute top-5 right-5 text-slate-400 hover:text-slate-600">
+              <i className="fa-solid fa-xmark text-lg"></i>
+            </button>
+
+            <div className="text-center mb-6">
+              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3 text-2xl ${
+                isAdminLogin ? 'bg-amber-100 text-amber-700' : 'bg-indigo-50 text-indigo-600'
+              }`}>
+                <i className={`fa-solid ${isAdminLogin ? 'fa-lock' : isRegister ? 'fa-user-plus' : 'fa-arrow-right-to-bracket'}`}></i>
+              </div>
+              <h3 className="text-xl font-extrabold text-slate-900">
+                {isAdminLogin ? 'Admin Portal Access' : isRegister ? 'Join SmartCart' : 'Welcome Back'}
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                {isAdminLogin ? 'Enter administrator credentials to proceed' : 'Sign in to access your orders and saved cart'}
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-3.5">
+              {isRegister && (
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="text" placeholder="First Name" required value={firstName} onChange={(e) => setFirstName(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs" />
+                  <input type="text" placeholder="Last Name" required value={lastName} onChange={(e) => setLastName(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs" />
+                </div>
+              )}
+              <input type="email" placeholder="Email address" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs" />
+              <input type="password" placeholder="Password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs" />
+              {isRegister && (
+                <input type="password" placeholder="Confirm Password" required value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs" />
+              )}
+              <button type="submit" disabled={loading} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow transition-colors">
+                {loading ? 'Please wait...' : isRegister ? 'Sign Up' : 'Sign In'}
+              </button>
+            </form>
+
+            <div className="mt-5 text-center text-xs text-slate-500">
+              {isRegister ? (
+                <>Already have an account? <button onClick={() => onSwitch('login')} className="text-indigo-600 font-bold hover:underline">Log In</button></>
+              ) : (
+                <>New to SmartCart? <button onClick={() => onSwitch('register')} className="text-indigo-600 font-bold hover:underline">Create Account</button></>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+  {% endverbatim %}
+</body>
+</html>
