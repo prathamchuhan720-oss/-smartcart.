@@ -292,6 +292,11 @@
       const [ordering, setOrdering] = useState('-created_at');
 
       const [selectedProduct, setSelectedProduct] = useState(null);
+      const [categories, setCategories] = useState([]);
+
+      useEffect(() => {
+        api.get('categories/').then((res) => setCategories(res.data.results || res.data || [])).catch(() => {});
+      }, []);
 
       const fetchCart = async () => {
         try {
