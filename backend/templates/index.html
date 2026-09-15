@@ -316,228 +316,209 @@
 
       return (
         <div className="flex flex-col min-h-screen">
-          {/* Customer Header */}
-          <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-              <div className="flex items-center justify-between h-16 gap-4">
-                {/* Logo */}
-                <div className="flex items-center gap-3 cursor-pointer" onClick={() => setCustomerTab('shop')}>
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white text-xl shadow-md shadow-indigo-100">
-                    <i className="fa-solid fa-cart-shopping"></i>
-                  </div>
-                  <div>
-                    <h1 className="font-extrabold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600">
-                      SmartCart
-                    </h1>
-                    <span className="text-[10px] text-slate-400 font-bold block -mt-1 tracking-wider uppercase">Customer Store</span>
-                  </div>
+          {/* Multi-Tier Multi-Tier Navigation Header */}
+          <header className="sticky top-0 z-40 bg-[#131921] text-white shadow-md">
+            <div className="max-w-[1500px] mx-auto px-3 sm:px-4 py-2.5 flex items-center gap-3 sm:gap-6">
+              {/* Brand Logo with Orange Arc Accent */}
+              <div className="flex items-center gap-2 cursor-pointer py-1 px-2 hover:outline hover:outline-1 hover:outline-white rounded" onClick={() => setCustomerTab('shop')}>
+                <div className="w-8 h-8 rounded-lg bg-amber-400 text-slate-950 flex items-center justify-center text-lg font-black shadow-sm">
+                  <i className="fa-solid fa-cart-shopping"></i>
                 </div>
-
-                {/* Live Search Input */}
-                <div className="flex-1 max-w-lg relative hidden md:block">
-                  <i className="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
-                  <input
-                    type="text"
-                    placeholder="Search phones, sportswear, electronics, audio..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
-                  />
-                  {searchQuery && (
-                    <button onClick={() => setSearchQuery('')} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600">
-                      <i className="fa-solid fa-xmark"></i>
-                    </button>
-                  )}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex items-center gap-3">
-                  {/* Theme Dark / Light Toggle */}
-                  <button
-                    onClick={() => setDarkMode(!darkMode)}
-                    className="p-2 rounded-xl text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors"
-                    title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}>
-                    <i className={`fa-solid ${darkMode ? 'fa-sun text-amber-400' : 'fa-moon text-slate-600'}`}></i>
-                  </button>
-
-                  {/* Owner Device Admin Portal Access Button (Hidden on regular customer devices) */}
-                  {isOwnerDevice && (
-                    <button
-                      onClick={currentUser?.is_admin ? onSwitchToAdmin : () => onOpenAuthModal('admin-login')}
-                      className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all">
-                      <i className="fa-solid fa-shield-halved"></i>
-                      <span>Admin Access</span>
-                    </button>
-                  )}
-
-                  {/* Wishlist Button */}
-                  <button
-                    onClick={() => {
-                      if (!currentUser) onOpenAuthModal('login');
-                      else setCustomerTab('wishlist');
-                    }}
-                    className="relative p-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors"
-                    title="Wishlist">
-                    <i className="fa-regular fa-heart text-lg"></i>
-                    {wishlistCount > 0 && (
-                      <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                        {wishlistCount}
-                      </span>
-                    )}
-                  </button>
-
-                  {/* Cart Drawer Trigger */}
-                  <button
-                    onClick={() => setCartOpen(true)}
-                    className="relative p-2.5 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors"
-                    title="Cart">
-                    <i className="fa-solid fa-bag-shopping text-lg"></i>
-                    {cart?.total_items > 0 && (
-                      <span className="absolute top-1 right-1 w-4 h-4 bg-indigo-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                        {cart.total_items}
-                      </span>
-                    )}
-                  </button>
-
-                  {/* User Profile / Auth State */}
-                  {currentUser ? (
-                    <div className="relative group">
-                      <button className="flex items-center gap-2 pl-2 pr-3 py-1.5 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-bold text-xs flex items-center justify-center uppercase">
-                          {currentUser.first_name ? currentUser.first_name[0] : currentUser.username[0]}
-                        </div>
-                        <span className="text-xs font-bold text-slate-700 max-w-[90px] truncate">
-                          {currentUser.first_name || currentUser.username}
-                        </span>
-                        <i className="fa-solid fa-chevron-down text-[10px] text-slate-400"></i>
-                      </button>
-
-                      <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-2xl shadow-xl py-1 hidden group-hover:block z-50">
-                        <div className="px-3.5 py-2.5 border-b border-slate-100">
-                          <p className="text-xs font-bold text-slate-800">{currentUser.full_name}</p>
-                          <p className="text-[11px] text-slate-400 truncate">{currentUser.email}</p>
-                        </div>
-                        <button
-                          onClick={() => setCustomerTab('orders')}
-                          className="w-full text-left px-3.5 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2">
-                          <i className="fa-solid fa-box text-slate-400"></i> My Orders
-                        </button>
-                        <button
-                          onClick={() => setCustomerTab('wishlist')}
-                          className="w-full text-left px-3.5 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2">
-                          <i className="fa-solid fa-heart text-slate-400"></i> My Wishlist
-                        </button>
-                        <button
-                          onClick={() => setCustomerTab('profile')}
-                          className="w-full text-left px-3.5 py-2 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-2">
-                          <i className="fa-solid fa-user text-slate-400"></i> Profile & Addresses
-                        </button>
-                        <div className="border-t border-slate-100 my-1"></div>
-                        <button
-                          onClick={onLogout}
-                          className="w-full text-left px-3.5 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-medium">
-                          <i className="fa-solid fa-arrow-right-from-bracket"></i> Sign Out
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => onOpenAuthModal('login')}
-                        className="text-xs font-bold text-slate-700 hover:text-indigo-600 px-3 py-2 flex items-center gap-1.5">
-                        <i className="fa-regular fa-user"></i> Customer Sign In
-                      </button>
-                      <button
-                        onClick={() => onOpenAuthModal('register')}
-                        className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2 rounded-xl shadow-sm">
-                        Sign Up
-                      </button>
-                      {/* Owner Device Admin Login Shortcut */}
-                      {isOwnerDevice && (
-                        <button
-                          onClick={() => onOpenAuthModal('admin-login')}
-                          className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline px-1 py-1 border-l border-slate-200 pl-2">
-                          <i className="fa-solid fa-lock text-[10px]"></i> Admin Login
-                        </button>
-                      )}
-                    </div>
-                  )}
+                <div>
+                  <div className="flex items-center font-black text-xl tracking-tight text-white leading-none">
+                    Smart<span className="text-amber-400">Cart</span>
+                    <span className="text-xs text-amber-400 ml-0.5">.in</span>
+                  </div>
+                  <span className="text-[9px] text-slate-400 font-semibold tracking-wider uppercase block">Fast & Secure</span>
                 </div>
               </div>
-            </div>
-          </header>
 
-          {/* Secondary Interactive Navigation Bar */}
-          <div className="bg-white/95 backdrop-blur-md border-b border-slate-200 py-2.5 px-4 sm:px-8 sticky top-16 z-30 shadow-xs">
-            <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs font-bold">
-              {/* Category & Shop Shortcuts */}
-              <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              {/* Delivery Location Indicator */}
+              <div className="hidden lg:flex items-center gap-1.5 py-1 px-2 hover:outline hover:outline-1 hover:outline-white rounded cursor-pointer text-left">
+                <i className="fa-solid fa-location-dot text-amber-400 text-base mt-1"></i>
+                <div className="leading-tight">
+                  <span className="text-[11px] text-slate-300 block font-normal">Delivering to</span>
+                  <span className="text-xs font-bold text-white tracking-wide">India - 110001</span>
+                </div>
+              </div>
+
+              {/* Central Search Bar with Category Dropdown & Orange Button */}
+              <div className="flex-1 flex items-center max-w-3xl">
+                <div className="flex w-full rounded-md overflow-hidden shadow-inner focus-within:ring-2 focus-within:ring-amber-500">
+                  <select
+                    value={activeCategory}
+                    onChange={(e) => { setActiveCategory(e.target.value); setCustomerTab('shop'); }}
+                    className="bg-[#f3f3f3] text-slate-800 text-xs font-semibold px-2 py-2.5 border-r border-slate-300 focus:outline-none cursor-pointer hidden sm:block max-w-[120px] truncate">
+                    <option value="">All Depts</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.slug}>{c.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Search SmartCart electronics, mobiles, fashion, home essentials..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="flex-1 px-3.5 py-2 text-xs text-slate-900 bg-white focus:outline-none font-medium"
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery('')} className="bg-white px-2.5 text-slate-400 hover:text-slate-700">
+                      <i className="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setCustomerTab('shop')}
+                    className="bg-[#febd69] hover:bg-[#f3a847] text-slate-950 px-5 flex items-center justify-center transition-colors">
+                    <i className="fa-solid fa-magnifying-glass text-sm"></i>
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Utility & Account Actions */}
+              <div className="flex items-center gap-1 sm:gap-3">
+                {/* Dark/Light Mode Switch */}
+                <button
+                  onClick={() => setDarkMode(!darkMode)}
+                  className="py-1 px-2 rounded hover:outline hover:outline-1 hover:outline-white text-slate-300 hover:text-white text-xs flex items-center gap-1.5"
+                  title="Toggle Theme">
+                  <i className={`fa-solid ${darkMode ? 'fa-sun text-amber-400' : 'fa-moon text-slate-300'}`}></i>
+                  <span className="hidden xl:inline text-[11px] font-semibold">{darkMode ? 'Light' : 'Dark'}</span>
+                </button>
+
+                {/* Owner-Only Admin Portal Button */}
+                {isOwnerDevice && (
+                  <button
+                    onClick={currentUser?.is_admin ? onSwitchToAdmin : () => onOpenAuthModal('admin-login')}
+                    className="bg-amber-400 hover:bg-amber-300 text-slate-950 px-2.5 py-1.5 rounded font-black text-xs flex items-center gap-1 shadow transition-all">
+                    <i className="fa-solid fa-shield-halved text-[11px]"></i>
+                    <span>Admin</span>
+                  </button>
+                )}
+
+                {/* Account & Lists */}
+                {currentUser ? (
+                  <div className="relative group">
+                    <div className="py-1 px-2 hover:outline hover:outline-1 hover:outline-white rounded cursor-pointer leading-tight text-left">
+                      <span className="text-[11px] text-slate-300 block font-normal truncate max-w-[100px]">Hello, {currentUser.first_name || currentUser.username}</span>
+                      <span className="text-xs font-bold text-white flex items-center gap-1">
+                        Account & Lists <i className="fa-solid fa-caret-down text-[10px] text-slate-400"></i>
+                      </span>
+                    </div>
+                    <div className="absolute right-0 mt-1 w-52 bg-white text-slate-800 rounded-xl shadow-2xl py-2 hidden group-hover:block z-50 border border-slate-200">
+                      <div className="px-4 py-2 border-b border-slate-100">
+                        <p className="text-xs font-bold text-slate-900">{currentUser.full_name}</p>
+                        <p className="text-[11px] text-slate-400 truncate">{currentUser.email}</p>
+                      </div>
+                      <button onClick={() => setCustomerTab('orders')} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-50 flex items-center gap-2 text-slate-700">
+                        <i className="fa-solid fa-box text-amber-500"></i> Your Orders
+                      </button>
+                      <button onClick={() => setCustomerTab('wishlist')} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-50 flex items-center gap-2 text-slate-700">
+                        <i className="fa-solid fa-heart text-rose-500"></i> Your Wishlist ({wishlistCount})
+                      </button>
+                      <button onClick={() => setCustomerTab('profile')} className="w-full text-left px-4 py-2 text-xs hover:bg-slate-50 flex items-center gap-2 text-slate-700">
+                        <i className="fa-solid fa-user text-indigo-500"></i> Profile & Addresses
+                      </button>
+                      <div className="border-t border-slate-100 my-1"></div>
+                      <button onClick={onLogout} className="w-full text-left px-4 py-2 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-bold">
+                        <i className="fa-solid fa-arrow-right-from-bracket"></i> Sign Out
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => onOpenAuthModal('login')}
+                      className="py-1 px-2 hover:outline hover:outline-1 hover:outline-white rounded text-left leading-tight">
+                      <span className="text-[11px] text-slate-300 block font-normal">Hello, sign in</span>
+                      <span className="text-xs font-bold text-white flex items-center gap-0.5">
+                        Account & Lists <i className="fa-solid fa-caret-down text-[9px] text-slate-400"></i>
+                      </span>
+                    </button>
+                    {isOwnerDevice && (
+                      <button
+                        onClick={() => onOpenAuthModal('admin-login')}
+                        className="text-[10px] text-amber-400 hover:underline px-1 font-bold">
+                        (Admin)
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Returns & Orders Shortcut */}
+                <button
+                  onClick={() => { if (!currentUser) onOpenAuthModal('login'); else setCustomerTab('orders'); }}
+                  className="hidden md:block py-1 px-2 hover:outline hover:outline-1 hover:outline-white rounded text-left leading-tight">
+                  <span className="text-[11px] text-slate-300 block font-normal">Returns</span>
+                  <span className="text-xs font-bold text-white">& Orders</span>
+                </button>
+
+                {/* Cart with Item Counter */}
+                <button
+                  onClick={() => setCartOpen(true)}
+                  className="py-1 px-2.5 hover:outline hover:outline-1 hover:outline-white rounded flex items-center gap-2 text-white transition-all">
+                  <div className="relative">
+                    <i className="fa-solid fa-cart-shopping text-2xl text-white"></i>
+                    <span className="absolute -top-1 left-3 bg-[#f08804] text-slate-950 text-[11px] font-black rounded-full px-1.5 py-0 min-w-[18px] text-center">
+                      {cart?.total_items || 0}
+                    </span>
+                  </div>
+                  <span className="hidden sm:inline font-bold text-sm text-white mt-1.5">Cart</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-Department Secondary Department Navigation Bar */}
+            <div className="bg-[#232f3e] px-4 py-1.5 text-xs text-white border-t border-slate-700/60 overflow-x-auto scrollbar-none flex items-center justify-between gap-4 font-semibold">
+              <div className="flex items-center gap-3 whitespace-nowrap">
                 <button
                   onClick={() => { setCustomerTab('shop'); setActiveCategory(''); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                    customerTab === 'shop' && !activeCategory ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}>
-                  <i className="fa-solid fa-compass"></i> All Catalog
+                  className="flex items-center gap-1.5 py-1 px-2 rounded hover:outline hover:outline-1 hover:outline-white text-white font-bold">
+                  <i className="fa-solid fa-bars text-sm"></i> All Departments
+                </button>
+                <button
+                  onClick={() => { setCustomerTab('shop'); setOrdering('-discount_percentage'); }}
+                  className="py-1 px-2 rounded hover:outline hover:outline-1 hover:outline-white text-amber-300 font-bold flex items-center gap-1">
+                  <i className="fa-solid fa-tag"></i> Today's Deals
                 </button>
                 <button
                   onClick={() => { setCustomerTab('shop'); setActiveCategory('smartphones'); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                    customerTab === 'shop' && activeCategory === 'smartphones' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}>
-                  <i className="fa-solid fa-mobile-screen"></i> Smartphones
+                  className="py-1 px-2 rounded hover:outline hover:outline-1 hover:outline-white text-slate-200 hover:text-white">
+                  Mobiles & Tech
+                </button>
+                <button
+                  onClick={() => { setCustomerTab('shop'); setActiveCategory('laptops-computers'); }}
+                  className="py-1 px-2 rounded hover:outline hover:outline-1 hover:outline-white text-slate-200 hover:text-white">
+                  Computers & Laptops
                 </button>
                 <button
                   onClick={() => { setCustomerTab('shop'); setActiveCategory('electronics'); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                    customerTab === 'shop' && activeCategory === 'electronics' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}>
-                  <i className="fa-solid fa-laptop"></i> Electronics
+                  className="py-1 px-2 rounded hover:outline hover:outline-1 hover:outline-white text-slate-200 hover:text-white">
+                  Audio & Headphones
                 </button>
                 <button
-                  onClick={() => { setCustomerTab('shop'); setActiveCategory('mens-wear'); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                    customerTab === 'shop' && activeCategory === 'mens-wear' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}>
-                  <i className="fa-solid fa-shirt"></i> Men's Wear
+                  onClick={() => { setCustomerTab('shop'); setActiveCategory('smart-home'); }}
+                  className="py-1 px-2 rounded hover:outline hover:outline-1 hover:outline-white text-slate-200 hover:text-white">
+                  Smart Home
                 </button>
                 <button
-                  onClick={() => { setCustomerTab('shop'); setActiveCategory('sports-fitness'); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                    customerTab === 'shop' && activeCategory === 'sports-fitness' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}>
-                  <i className="fa-solid fa-dumbbell"></i> Sports & Shoes
+                  onClick={() => { setCustomerTab('shop'); setActiveCategory('kitchen-dining'); }}
+                  className="py-1 px-2 rounded hover:outline hover:outline-1 hover:outline-white text-slate-200 hover:text-white">
+                  Home & Kitchen
+                </button>
+                <button
+                  onClick={() => { setCustomerTab('shop'); setMinRating(4); }}
+                  className="py-1 px-2 rounded hover:outline hover:outline-1 hover:outline-white text-amber-400 font-bold">
+                  ★ Customer Best-Rated
                 </button>
               </div>
 
-              {/* Direct Tab Jumps */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => { if (!currentUser) onOpenAuthModal('login'); else setCustomerTab('orders'); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                    customerTab === 'orders' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}>
-                  <i className="fa-solid fa-box-archive text-amber-500"></i>
-                  <span>My Orders</span>
-                </button>
-                <button
-                  onClick={() => { if (!currentUser) onOpenAuthModal('login'); else setCustomerTab('wishlist'); }}
-                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                    customerTab === 'wishlist' ? 'bg-rose-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}>
-                  <i className="fa-solid fa-heart text-rose-500"></i>
-                  <span>Wishlist ({wishlistCount})</span>
-                </button>
-                <button
-                  onClick={() => setCartOpen(true)}
-                  className="px-3.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 flex items-center gap-1.5 font-extrabold transition-all whitespace-nowrap">
-                  <i className="fa-solid fa-bag-shopping text-indigo-600"></i>
-                  <span>Cart ({cart?.total_items || 0})</span>
-                  <span className="text-slate-400 font-normal">|</span>
-                  <span>₹{Number(cart?.subtotal || 0).toLocaleString()}</span>
-                </button>
+              <div className="hidden lg:flex items-center gap-4 text-[11px] text-slate-300 font-normal">
+                <span className="flex items-center gap-1.5 text-amber-300 font-bold">
+                  <i className="fa-solid fa-truck-fast"></i> Guaranteed Fast Express Shipping
+                </span>
               </div>
             </div>
-          </div>
+          </header>
 
           {/* Customer Body View */}
           <main className="flex-1">
@@ -734,7 +715,7 @@
 
       return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Amazon-Style Modern Hero Banner & Deals Carousel */}
+          {/* SmartCart Deals of the Day Carousel */}
           <div className="rounded-3xl bg-gradient-to-r from-slate-950 via-[#131921] to-slate-900 text-white p-6 sm:p-10 mb-6 shadow-2xl relative overflow-hidden border border-slate-800">
             <div className="relative z-10 max-w-2xl">
               <div className="flex items-center gap-2 mb-3">
@@ -747,7 +728,7 @@
               </div>
 
               <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight mb-2 leading-tight">
-                Amazon Best-Sellers & Electronics Mega Sale
+                Mega Electronics, Mobiles & Home Essentials Sale
               </h2>
               <p className="text-slate-300 text-xs sm:text-sm mb-5 leading-relaxed">
                 MacBook M3, PS5 Slim, AirPods Pro, Echo Dot & Galaxy S24 Ultra with instant delivery. Apply coupon <span className="bg-amber-400 text-slate-950 px-2 py-0.5 rounded font-mono font-black">WELCOME10</span> for extra 10% discount!
@@ -772,9 +753,9 @@
               </div>
             </div>
 
-            {/* Amazon Style Background Badge Graphics */}
+            {/* Storefront Brand Background Badge Graphics */}
             <div className="absolute right-6 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-4 opacity-20 pointer-events-none">
-              <i className="fa-brands fa-amazon text-[180px] text-amber-400"></i>
+              <i className="fa-solid fa-cart-shopping text-[160px] text-amber-400"></i>
             </div>
           </div>
 
@@ -2448,10 +2429,10 @@
               {product.name}
             </h4>
 
-            {/* Amazon Prime Delivery Badge */}
+            {/* SmartCart Express Delivery Badge */}
             <div className="flex items-center gap-1.5 my-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-              <span className="font-black italic text-[#00a8e1] tracking-tighter text-xs">prime</span>
-              <span>FREE One-Day Delivery</span>
+              <span className="font-black italic text-[#00a8e1] tracking-tighter text-xs">fast</span>
+              <span>FREE Express One-Day Delivery</span>
             </div>
 
             <div className="mt-auto pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
