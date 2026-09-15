@@ -15,7 +15,7 @@ from inventory.models import Inventory
 AMAZON_PRODUCTS = [
     {
         "name": "Apple MacBook Air 13.6-inch M3 Chip (16GB RAM, 512GB SSD) - Space Grey",
-        "sku": "AMZN-APL-MBA-M3-01",
+        "sku": "SMC-APL-MBA-M3-01",
         "category": "Laptops & Computers",
         "category_icon": "fas fa-laptop",
         "brand": "Apple",
@@ -30,10 +30,10 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Echo Dot (5th Gen) Smart Speaker with Alexa - Charcoal",
-        "sku": "AMZN-ECHO-DOT-5-02",
+        "sku": "SMC-ECHO-DOT-5-02",
         "category": "Smart Home",
         "category_icon": "fas fa-home",
-        "brand": "Amazon",
+        "brand": "SmartCart",
         "base_price": Decimal("4499.00"),
         "discount_percentage": Decimal("22.00"),
         "rating": Decimal("4.60"),
@@ -45,7 +45,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Apple AirPods Pro (2nd Generation) with USB-C Charging Case",
-        "sku": "AMZN-APL-APP2-03",
+        "sku": "SMC-APL-APP2-03",
         "category": "Audio & Headphones",
         "category_icon": "fas fa-headphones",
         "brand": "Apple",
@@ -60,7 +60,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Sony PlayStation 5 Slim Console (Disc Edition)",
-        "sku": "AMZN-SNY-PS5-SLIM-04",
+        "sku": "SMC-SNY-PS5-SLIM-04",
         "category": "Gaming & Consoles",
         "category_icon": "fas fa-gamepad",
         "brand": "Sony",
@@ -75,10 +75,10 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Kindle Paperwhite (16 GB) - 6.8 inch display with adjustable warm light",
-        "sku": "AMZN-KNDL-PW-16G-05",
+        "sku": "SMC-KNDL-PW-16G-05",
         "category": "E-Readers & Tablets",
         "category_icon": "fas fa-tablet-alt",
-        "brand": "Amazon",
+        "brand": "SmartCart",
         "base_price": Decimal("14999.00"),
         "discount_percentage": Decimal("12.00"),
         "rating": Decimal("4.70"),
@@ -90,10 +90,10 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Fire TV Stick 4K Max streaming device with Wi-Fi 6 & Alexa Voice Remote",
-        "sku": "AMZN-FTV-STICK-4K-06",
+        "sku": "SMC-FTV-STICK-4K-06",
         "category": "Smart Home",
         "category_icon": "fas fa-home",
-        "brand": "Amazon",
+        "brand": "SmartCart",
         "base_price": Decimal("6499.00"),
         "discount_percentage": Decimal("25.00"),
         "rating": Decimal("4.60"),
@@ -105,7 +105,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Logitech MX Master 3S Wireless Performance Mouse",
-        "sku": "AMZN-LOGI-MXM3S-07",
+        "sku": "SMC-LOGI-MXM3S-07",
         "category": "Computer Accessories",
         "category_icon": "fas fa-mouse",
         "brand": "Logitech",
@@ -120,7 +120,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Apple Watch Series 9 (GPS 45mm) - Midnight Aluminum Case with Sport Band",
-        "sku": "AMZN-APL-AW9-45-08",
+        "sku": "SMC-APL-AW9-45-08",
         "category": "Wearable Tech",
         "category_icon": "fas fa-clock",
         "brand": "Apple",
@@ -135,7 +135,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Bose QuietComfort Ultra Wireless Noise Cancelling Headphones",
-        "sku": "AMZN-BOSE-QCU-09",
+        "sku": "SMC-BOSE-QCU-09",
         "category": "Audio & Headphones",
         "category_icon": "fas fa-headphones",
         "brand": "Bose",
@@ -150,7 +150,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Samsung 55-inch The Frame QLED 4K Smart TV",
-        "sku": "AMZN-SMSG-FRAME-55-10",
+        "sku": "SMC-SMSG-FRAME-55-10",
         "category": "TV & Entertainment",
         "category_icon": "fas fa-tv",
         "brand": "Samsung",
@@ -165,7 +165,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Instant Pot Duo 7-in-1 Electric Pressure Cooker (6 Quart)",
-        "sku": "AMZN-INST-POT-6Q-11",
+        "sku": "SMC-INST-POT-6Q-11",
         "category": "Kitchen & Dining",
         "category_icon": "fas fa-utensils",
         "brand": "Instant Brands",
@@ -180,7 +180,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Dyson V15 Detect Cordless Vacuum Cleaner",
-        "sku": "AMZN-DYSN-V15-12",
+        "sku": "SMC-DYSN-V15-12",
         "category": "Home & Cleaning",
         "category_icon": "fas fa-broom",
         "brand": "Dyson",
@@ -195,7 +195,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Stanley Quencher H2.0 FlowState Stainless Steel Tumbler (40 oz)",
-        "sku": "AMZN-STNL-40OZ-13",
+        "sku": "SMC-STNL-40OZ-13",
         "category": "Sports & Outdoors",
         "category_icon": "fas fa-tint",
         "brand": "Stanley",
@@ -210,7 +210,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Nespresso Vertuo Pop Coffee and Espresso Machine by De'Longhi",
-        "sku": "AMZN-NESP-VPOP-14",
+        "sku": "SMC-NESP-VPOP-14",
         "category": "Kitchen & Dining",
         "category_icon": "fas fa-utensils",
         "brand": "Nespresso",
@@ -225,7 +225,7 @@ AMAZON_PRODUCTS = [
     },
     {
         "name": "Canon EOS R50 Mirrorless Camera with 18-45mm Lens Kit",
-        "sku": "AMZN-CNN-R50-15",
+        "sku": "SMC-CNN-R50-15",
         "category": "Cameras & Photography",
         "category_icon": "fas fa-camera",
         "brand": "Canon",
@@ -241,7 +241,7 @@ AMAZON_PRODUCTS = [
 ]
 
 def seed_amazon_products():
-    print("Seeding Amazon top products...")
+    print("Seeding top-trending catalog products...")
     created_count = 0
     updated_count = 0
 
